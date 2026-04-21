@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { startWorker } from './worker';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -14,6 +15,10 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
   });
+
+  if (process.env.RUN_WORKER_INLINE !== 'false') {
+    startWorker();
+  }
 
   await app.listen(process.env.PORT ?? 3002);
 }

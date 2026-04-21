@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
-import { DEV_TEST_QUEUE, getRedisUrl } from './bullmq.constants';
+import { getQueueName, getRedisUrl } from './bullmq.constants';
 
 export const TEST_JOB_QUEUE = Symbol('TEST_JOB_QUEUE');
 
@@ -15,7 +15,7 @@ export const TEST_JOB_QUEUE = Symbol('TEST_JOB_QUEUE');
           maxRetriesPerRequest: null,
         });
 
-        const queue = new Queue(DEV_TEST_QUEUE, { connection });
+        const queue = new Queue(getQueueName(), { connection });
 
         return queue;
       },
