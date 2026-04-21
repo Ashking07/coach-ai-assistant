@@ -2,9 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from './components/ui/button'
 
 function App() {
+  const apiUrl = import.meta.env.VITE_API_URL
+
   const { data } = useQuery({
     queryKey: ['health'],
-    queryFn: () => fetch('http://localhost:3000/health').then((r) => r.json()),
+    queryFn: () =>
+      fetch(new URL('/health', apiUrl)).then((r) => r.json()),
   })
 
   return (
