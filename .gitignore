@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+coverage/
+.next/
+.nuxt/
+.svelte-kit/
+storybook-static/
+
+# Cache and temp
+.cache/
+.turbo/
+.eslintcache
+*.tsbuildinfo
+tmp/
+temp/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+
+
+
