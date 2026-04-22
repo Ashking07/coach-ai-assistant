@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BullMqModule } from './bullmq.module';
-import { PrismaService } from './prisma.service';
+import { MessagesModule } from './modules/messages/messages.module';
 import { validateEnv } from './common/env.validation';
 
 @Module({
@@ -13,15 +13,15 @@ import { validateEnv } from './common/env.validation';
       ignoreEnvFile: true,
     }),
     BullMqModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [
     {
       provide: 'ENV_VALIDATION',
-      useFactory: () => validateEnv(process.env as Record<string, unknown>),
+      useFactory: () => validateEnv(process.env),
     },
     AppService,
-    PrismaService,
   ],
 })
 export class AppModule {}

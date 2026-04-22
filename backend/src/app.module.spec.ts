@@ -21,7 +21,9 @@ describe('AppModule bootstrap env validation', () => {
 
   it('boots when INTERNAL_INGEST_TOKEN is set', async () => {
     process.env.INTERNAL_INGEST_TOKEN = 'x'.repeat(32);
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     expect(moduleRef).toBeDefined();
     await moduleRef.close();
   });
