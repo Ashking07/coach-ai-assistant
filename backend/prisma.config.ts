@@ -7,6 +7,7 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    seed: "ts-node prisma/seed.ts",
   },
   datasource: {
     // Prisma CLI (migrate, db push, studio) should always use a direct, unpooled
