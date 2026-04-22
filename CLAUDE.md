@@ -8,7 +8,7 @@ An agentic attention-management system for elite solo coaches. Parents interact 
 
 ## Workspace layout
 
-pnpm workspace with three packages declared in `pnpm-workspace.yaml`: `frontend`, `backend`, `shared` (the `shared` dir is reserved; not yet created). Run `pnpm install` at the repo root — per-package installs are not the usual path.
+pnpm workspace with three packages declared in `pnpm-workspace.yaml`: `frontend`, `backend`, `shared`. The `shared` package (`@coach/shared`) contains the `ParentMessageSchema` Zod schema used by both the inbound endpoint and future channel adapters. Run `pnpm install` at the repo root — per-package installs are not the usual path.
 
 ## Local infrastructure
 
@@ -28,9 +28,15 @@ NestJS 11 + Prisma 7 (pg adapter) + BullMQ 5. Two entrypoints share the same `Ap
 
 The web and worker agree on queue identity through `DEV_TEST_QUEUE = 'coach-dev-test-jobs'` in `bullmq.constants.ts`. The worker allows `BULLMQ_QUEUE_NAME` to override; if you set it, set it on both sides or jobs will silently not be consumed.
 
-`PrismaService` (`src/prisma.service.ts`) extends `PrismaClient` using `@prisma/adapter-pg` with its own `pg.Pool` — it throws at construction if `DATABASE_URL` is unset. It is registered as a normal provider in `AppModule`, not via a dedicated module.
+`PrismaService` (`src/prisma.service.ts`) extends `PrismaClient` using `@prisma/adapter-pg` with its own `pg.Pool` — it throws at construction if `DATABASE_URL` is unset. It is registered in `MessagesModule` (not `AppModule`) so that `MessagesService` can inject it.
 
 `BullMqModule` (`src/bullmq.module.ts`) is `@Global()` and exports the Queue via a symbol token `TEST_JOB_QUEUE`. Controllers inject it with `@Inject(TEST_JOB_QUEUE)`.
+
+`MessagesController` (`src/modules/messages/messages.controller.ts`) owns `POST /api/messages/inbound`. It validates the shared `ParentMessageSchema`, requires `INTERNAL_INGEST_TOKEN` via `x-internal-token`, and delegates persistence/enqueueing to `MessagesService`.
+
+`MessagesService` is the single writer for inbound parent messages. It creates or reuses parents, deduplicates by `(channel, providerMessageId)`, writes `Message`, enqueues `MESSAGE_INGESTED`, and provides boot-time recovery for orphaned inbound messages.
+
+`worker.ts` handles `MESSAGE_INGESTED` jobs in a separate process and calls back into `MessagesService` to write the placeholder `AgentDecision` and mark the message processed. It also runs orphan recovery on startup.
 
 ### Common backend commands
 
@@ -45,10 +51,13 @@ pnpm lint                   # eslint --fix
 pnpm test                   # jest (unit, *.spec.ts under src/)
 pnpm test -- app.controller # run a single test file by name pattern
 pnpm test:e2e               # jest with test/jest-e2e.json
+pnpm test:e2e -- messages   # Phase 2 ingestion integration test (requires real DB + Redis)
 pnpm test:cov               # jest --coverage
 ```
 
 Prisma uses `prisma.config.ts` (new-style config; `.env` is loaded via `dotenv/config` there — the default Prisma auto-load does not apply). Typical flow: `pnpm prisma migrate dev`, `pnpm prisma generate`.
+
+`INTERNAL_INGEST_TOKEN` — secret for `POST /api/messages/inbound`. Must be ≥16 chars; app crashes on boot if missing. Guards the endpoint with a constant-time comparison (`timingSafeEqualStr`).
 
 ### Dev smoke test
 
@@ -76,4 +85,4 @@ No test runner is configured on the frontend.
 
 ## Deployment notes
 
-Backend is deployed to Render at `coach-ai-assistant-backend.onrender.com` (hardcoded in the CORS default). Ensure `PORT`, `DATABASE_URL`, `REDIS_URL`, and `CORS_ORIGIN` are set in the Render environment — the code relies on env defaults that only make sense locally.
+Backend is deployed to Render at `coach-ai-assistant-backend.onrender.com` (hardcoded in the CORS default). Ensure `PORT`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGIN`, and `INTERNAL_INGEST_TOKEN` are set in the Render environment — the code relies on env defaults that only make sense locally.
