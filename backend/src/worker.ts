@@ -2,10 +2,18 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
-import { getQueueName, getRedisUrl } from './bullmq.constants';
+import { z } from 'zod';
+import {
+  MESSAGE_INGESTED_JOB,
+  getQueueName,
+  getRedisUrl,
+} from './bullmq.constants';
 import { AppModule } from './app.module';
+import { MessagesService } from './modules/messages/messages.service';
 
-export function startWorker() {
+const MessageIngestedPayload = z.object({ messageId: z.string().min(1) });
+
+export function startWorker(messagesService: MessagesService) {
   const queueName = getQueueName();
   const connection = new IORedis(getRedisUrl(), {
     maxRetriesPerRequest: null,
@@ -14,7 +22,19 @@ export function startWorker() {
   const worker = new Worker(
     queueName,
     async (job: Job) => {
-      const message = job.data?.message ?? 'hello';
+      if (job.name === MESSAGE_INGESTED_JOB) {
+        const { messageId } = MessageIngestedPayload.parse(job.data);
+
+        const processed =
+          await messagesService.processIngestedMessage(messageId);
+        if (!processed) {
+          return { ok: true, skipped: 'already_processed' };
+        }
+
+        return { ok: true };
+      }
+
+      const message = (job.data as { message?: string })?.message ?? 'hello';
       console.log(`Received: ${message}`);
       return { ok: true };
     },
@@ -22,7 +42,7 @@ export function startWorker() {
   );
 
   worker.on('completed', (job) => {
-    console.log(`Completed job ${job.id} from ${queueName}`);
+    console.log(`Completed job ${job.id} (${job.name}) from ${queueName}`);
   });
 
   worker.on('failed', (job, error) => {
@@ -43,7 +63,14 @@ export function startWorker() {
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
-  const { close } = startWorker();
+  const messagesService = app.get(MessagesService);
+
+  const recovered = await messagesService.recoverOrphanedMessages();
+  if (recovered > 0) {
+    console.log(`Recovered ${recovered} orphaned messages on boot`);
+  }
+
+  const { close } = startWorker(messagesService);
 
   const shutdown = async () => {
     await close();

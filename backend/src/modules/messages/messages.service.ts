@@ -19,6 +19,11 @@ export class MessagesService {
   ) {}
 
   async ingest(msg: ParentMessage): Promise<IngestResult> {
+    const parentAlreadyExists = await this.prisma.parent.findUnique({
+      where: { coachId_phone: { coachId: msg.coachId, phone: msg.fromPhone } },
+      select: { id: true },
+    });
+
     const parent = await this.prisma.parent.upsert({
       where: { coachId_phone: { coachId: msg.coachId, phone: msg.fromPhone } },
       create: {
@@ -26,15 +31,11 @@ export class MessagesService {
         phone: msg.fromPhone,
         name: msg.fromName ?? `Unknown (${msg.fromPhone})`,
         preferredChannel: msg.channel === 'VOICE' ? 'SMS' : msg.channel,
-        isVerified: false,
       },
       update: {},
     });
 
-    const freshParent =
-      parent.updatedAt == null ||
-      parent.createdAt.getTime() === parent.updatedAt.getTime();
-    if (freshParent) {
+    if (!parentAlreadyExists) {
       this.logger.log(
         {
           event: 'UNKNOWN_PARENT_CREATED',
@@ -66,7 +67,12 @@ export class MessagesService {
         },
         MessagesService.name,
       );
-      return { messageId: existing.id, duplicate: true, enqueued: false, jobId: null };
+      return {
+        messageId: existing.id,
+        duplicate: true,
+        enqueued: false,
+        jobId: null,
+      };
     }
 
     const message = await this.prisma.message.create({
@@ -81,7 +87,9 @@ export class MessagesService {
       },
     });
 
-    const job = await this.queue.add(MESSAGE_INGESTED_JOB, { messageId: message.id });
+    const job = await this.queue.add(MESSAGE_INGESTED_JOB, {
+      messageId: message.id,
+    });
 
     return {
       messageId: message.id,
@@ -113,5 +121,36 @@ export class MessagesService {
       );
     }
     return orphans.length;
+  }
+
+  async processIngestedMessage(messageId: string): Promise<boolean> {
+    const existing = await this.prisma.agentDecision.findFirst({
+      where: { messageId },
+      select: { id: true },
+    });
+    if (existing) {
+      return false;
+    }
+
+    const message = await this.prisma.message.findUniqueOrThrow({
+      where: { id: messageId },
+      include: { parent: true },
+    });
+
+    await this.prisma.agentDecision.create({
+      data: {
+        coachId: message.coachId,
+        messageId: message.id,
+        intent: 'NOT_PROCESSED',
+        actionTaken: 'INGESTED',
+      },
+    });
+
+    await this.prisma.message.update({
+      where: { id: message.id },
+      data: { processedAt: new Date() },
+    });
+
+    return true;
   }
 }
