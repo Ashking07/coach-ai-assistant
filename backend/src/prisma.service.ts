@@ -16,11 +16,12 @@ export class PrismaService
       throw new Error('DATABASE_URL is not set');
     }
 
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
     const pool = new Pool({ connectionString });
     const adapter = new PrismaPg(pool);
-
     super({ adapter });
     this.pool = pool;
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
   }
 
   async onModuleInit() {
@@ -29,6 +30,7 @@ export class PrismaService
 
   async onModuleDestroy() {
     await this.$disconnect();
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
     await this.pool.end();
   }
 }

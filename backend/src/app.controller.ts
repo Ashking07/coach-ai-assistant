@@ -1,5 +1,11 @@
-import { Body, Controller, Get, Inject, NotFoundException, Post } from '@nestjs/common';
-import { Job } from 'bullmq';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  NotFoundException,
+  Post,
+} from '@nestjs/common';
 import { AppService } from './app.service';
 import { DEV_TEST_QUEUE } from './bullmq.constants';
 import { TEST_JOB_QUEUE } from './bullmq.module';

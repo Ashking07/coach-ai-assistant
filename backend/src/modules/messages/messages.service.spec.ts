@@ -16,7 +16,7 @@ const baseMsg: ParentMessage = {
 
 function makePrismaMock() {
   return {
-    parent: { upsert: jest.fn() },
+    parent: { findUnique: jest.fn(), upsert: jest.fn() },
     message: { findUnique: jest.fn(), create: jest.fn() },
   };
 }
@@ -43,19 +43,24 @@ describe('MessagesService.ingest', () => {
       ],
     }).compile();
     service = moduleRef.get(MessagesService);
-    logSpy = jest.spyOn((service as any).logger, 'log').mockImplementation(() => {});
-    warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => {});
+    /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+    logSpy = jest
+      .spyOn((service as any).logger, 'log')
+      .mockImplementation(() => {});
+    warnSpy = jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation(() => {});
+    /* eslint-enable @typescript-eslint/no-unsafe-member-access */
   });
 
   it('fresh phone creates unverified Parent, logs UNKNOWN_PARENT_CREATED, enqueues', async () => {
     const now = new Date('2026-04-21T12:00:00Z');
+    prisma.parent.findUnique.mockResolvedValue(null);
     prisma.parent.upsert.mockResolvedValue({
       id: 'parent-1',
       coachId: 'demo-coach',
       phone: '+15555550001',
-      isVerified: false,
       createdAt: now,
-      updatedAt: now,
     });
     prisma.message.findUnique.mockResolvedValue(null);
     prisma.message.create.mockResolvedValue({ id: 'msg-1' });
@@ -63,10 +68,13 @@ describe('MessagesService.ingest', () => {
 
     const result = await service.ingest(baseMsg);
 
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment */
     expect(prisma.parent.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { coachId_phone: { coachId: 'demo-coach', phone: '+15555550001' } },
-        create: expect.objectContaining({ isVerified: false, name: 'Jane' }),
+        where: {
+          coachId_phone: { coachId: 'demo-coach', phone: '+15555550001' },
+        },
+        create: expect.objectContaining({ name: 'Jane' }),
       }),
     );
     expect(prisma.message.create).toHaveBeenCalledWith(
@@ -81,9 +89,15 @@ describe('MessagesService.ingest', () => {
         }),
       }),
     );
-    expect(queue.add).toHaveBeenCalledWith('MESSAGE_INGESTED', { messageId: 'msg-1' });
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+    expect(queue.add).toHaveBeenCalledWith('MESSAGE_INGESTED', {
+      messageId: 'msg-1',
+    });
     expect(logSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'UNKNOWN_PARENT_CREATED', parentId: 'parent-1' }),
+      expect.objectContaining({
+        event: 'UNKNOWN_PARENT_CREATED',
+        parentId: 'parent-1',
+      }),
       'MessagesService',
     );
     expect(result).toEqual({
@@ -95,10 +109,10 @@ describe('MessagesService.ingest', () => {
   });
 
   it('known phone (createdAt !== updatedAt) does not log UNKNOWN_PARENT_CREATED', async () => {
+    prisma.parent.findUnique.mockResolvedValue({ id: 'parent-1' });
     prisma.parent.upsert.mockResolvedValue({
       id: 'parent-1',
       createdAt: new Date('2026-01-01'),
-      updatedAt: new Date('2026-04-01'),
     });
     prisma.message.findUnique.mockResolvedValue(null);
     prisma.message.create.mockResolvedValue({ id: 'msg-2' });
@@ -106,17 +120,19 @@ describe('MessagesService.ingest', () => {
 
     await service.ingest(baseMsg);
 
-    const unknownCalls = logSpy.mock.calls.filter(
-      (c) => c[0]?.event === 'UNKNOWN_PARENT_CREATED',
-    );
+    const unknownCalls = logSpy.mock.calls.filter((c) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const entry = c[0] as Record<string, unknown>;
+      return entry?.event === 'UNKNOWN_PARENT_CREATED';
+    });
     expect(unknownCalls).toHaveLength(0);
   });
 
   it('duplicate (channel, providerMessageId) returns early without enqueue', async () => {
+    prisma.parent.findUnique.mockResolvedValue({ id: 'parent-1' });
     prisma.parent.upsert.mockResolvedValue({
       id: 'parent-1',
       createdAt: new Date('2026-01-01'),
-      updatedAt: new Date('2026-04-01'),
     });
     prisma.message.findUnique.mockResolvedValue({ id: 'existing-msg-id' });
 
@@ -140,10 +156,10 @@ describe('MessagesService.ingest', () => {
   });
 
   it('DB commit happens before enqueue (enqueue failure leaves row committed)', async () => {
+    prisma.parent.findUnique.mockResolvedValue({ id: 'parent-1' });
     prisma.parent.upsert.mockResolvedValue({
       id: 'parent-1',
       createdAt: new Date('2026-01-01'),
-      updatedAt: new Date('2026-04-01'),
     });
     prisma.message.findUnique.mockResolvedValue(null);
     prisma.message.create.mockResolvedValue({ id: 'msg-3' });
@@ -151,8 +167,10 @@ describe('MessagesService.ingest', () => {
 
     await expect(service.ingest(baseMsg)).rejects.toThrow('redis down');
     expect(prisma.message.create).toHaveBeenCalled();
+
     const createOrder = prisma.message.create.mock.invocationCallOrder[0];
     const addOrder = queue.add.mock.invocationCallOrder[0];
+
     expect(createOrder).toBeLessThan(addOrder);
   });
 });

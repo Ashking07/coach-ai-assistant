@@ -40,9 +40,9 @@ describe('AppController', () => {
     it('throws NotFoundException in production', async () => {
       process.env.NODE_ENV = 'production';
       const ctrl = await makeController();
-      await expect(ctrl.enqueueTestJob({ message: 'hi' })).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        ctrl.enqueueTestJob({ message: 'hi' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('enqueues outside production', async () => {
