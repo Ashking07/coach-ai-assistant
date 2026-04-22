@@ -9,6 +9,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Prisma CLI (migrate, db push, studio) should always use a direct, unpooled
+    // connection. In production this is Neon's direct URL; locally it's the same
+    // as DATABASE_URL. Fall back to DATABASE_URL when DIRECT_URL isn't set.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
