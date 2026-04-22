@@ -41,6 +41,7 @@ enum Intent {
   COMPLAINT
   AMBIGUOUS
   OUT_OF_SCOPE
+  NOT_PROCESSED
 }
 
 enum ConfidenceTier {
@@ -80,6 +81,7 @@ model Parent {
   name             String
   phone            String
   preferredChannel Channel  @default(SMS)
+  isVerified      Boolean  @default(false)
   createdAt        DateTime @default(now())
 
   coach            Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
@@ -166,14 +168,14 @@ model AgentDecision {
   coachId     String
   messageId   String
   intent      Intent
-  confidence  Float
-  tier        ConfidenceTier
+  confidence  Float?
+  tier        ConfidenceTier?
   actionTaken String
-  reasoning   String
-  llmModel    String
-  tokensIn    Int
-  tokensOut   Int
-  latencyMs   Int
+  reasoning   String?
+  llmModel    String?
+  tokensIn    Int?
+  tokensOut   Int?
+  latencyMs   Int?
   createdAt   DateTime       @default(now())
 
   coach       Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
