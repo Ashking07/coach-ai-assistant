@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,9 +6,196 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Channel {
+  SMS
+  WEB_CHAT
+  VOICE
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum SessionStatus {
+  PROPOSED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentMethod {
+  CASH
+  STRIPE
+}
+
+enum Intent {
+  BOOK
+  RESCHEDULE
+  CANCEL
+  QUESTION_LOGISTICS
+  QUESTION_PROGRESS
+  PAYMENT
+  SMALLTALK
+  COMPLAINT
+  AMBIGUOUS
+  OUT_OF_SCOPE
+}
+
+enum ConfidenceTier {
+  AUTO
+  APPROVE
+  ESCALATE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ESCALATED
+  EXPIRED
+}
+
 model Coach {
+  id               String   @id @default(cuid())
+  name             String
+  phone            String
+  timezone         String   @default("America/Los_Angeles")
+  stripeAccountId  String?
+  createdAt        DateTime @default(now())
+
+  parents          Parent[]
+  kids             Kid[]
+  sessions         Session[]
+  availability     Availability[]
+  messages         Message[]
+  agentDecisions   AgentDecision[]
+  approvals        ApprovalQueue[]
+}
+
+model Parent {
+  id               String   @id @default(cuid())
+  coachId          String
+  name             String
+  phone            String
+  preferredChannel Channel  @default(SMS)
+  createdAt        DateTime @default(now())
+
+  coach            Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  kids             Kid[]
+  messages         Message[]
+
+  @@unique([coachId, phone])
+  @@index([coachId])
+}
+
+model Kid {
   id        String   @id @default(cuid())
+  coachId   String
+  parentId  String
   name      String
-  phone     String
+  age       Int
+  notes     String   @default("")
   createdAt DateTime @default(now())
+
+  coach     Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  parent    Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  sessions  Session[]
+
+  @@index([coachId])
+  @@index([parentId])
+}
+
+model Session {
+  id              String        @id @default(cuid())
+  coachId         String
+  kidId           String
+  scheduledAt     DateTime
+  durationMinutes Int           @default(60)
+  status          SessionStatus @default(PROPOSED)
+  paid            Boolean       @default(false)
+  paymentMethod   PaymentMethod?
+  coachNotes      String        @default("")
+  createdAt       DateTime      @default(now())
+
+  coach           Coach         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  kid             Kid           @relation(fields: [kidId], references: [id], onDelete: Cascade)
+
+  @@index([coachId, scheduledAt])
+  @@index([kidId])
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  coachId   String
+  startAt   DateTime
+  endAt     DateTime
+  isBlocked Boolean  @default(false)
+  reason    String   @default("")
+  createdAt DateTime @default(now())
+
+  coach     Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@index([coachId, startAt])
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  coachId           String
+  parentId          String
+  direction         MessageDirection
+  channel           Channel
+  providerMessageId String
+  content           String
+  receivedAt        DateTime         @default(now())
+  processedAt       DateTime?
+
+  coach             Coach            @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  parent            Parent           @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  agentDecisions    AgentDecision[]
+  approvals         ApprovalQueue[]
+
+  @@unique([channel, providerMessageId])
+  @@index([coachId, receivedAt])
+  @@index([parentId])
+}
+
+model AgentDecision {
+  id          String         @id @default(cuid())
+  coachId     String
+  messageId   String
+  intent      Intent
+  confidence  Float
+  tier        ConfidenceTier
+  actionTaken String
+  reasoning   String
+  llmModel    String
+  tokensIn    Int
+  tokensOut   Int
+  latencyMs   Int
+  createdAt   DateTime       @default(now())
+
+  coach       Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  message     Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([coachId, createdAt])
+  @@index([messageId])
+}
+
+model ApprovalQueue {
+  id          String         @id @default(cuid())
+  coachId     String
+  messageId   String
+  draftReply  String
+  status      ApprovalStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+
+  coach       Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  message     Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([coachId, status])
+  @@index([messageId])
 }
