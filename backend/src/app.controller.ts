@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, NotFoundException, Post } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { AppService } from './app.service';
 import { DEV_TEST_QUEUE } from './bullmq.constants';
@@ -27,6 +27,9 @@ export class AppController {
 
   @Post('dev/test-job')
   async enqueueTestJob(@Body() body: { message?: string }) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new NotFoundException();
+    }
     const message = body.message ?? 'hello';
     const job = await this.testJobQueue.add(DEV_TEST_QUEUE, {
       message,
