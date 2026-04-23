@@ -6,6 +6,7 @@ import { BullMqModule } from './bullmq.module';
 import { PrismaModule } from './prisma.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { MessagesModule } from './modules/messages/messages.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { validateEnv } from './common/env.validation';
 
 @Module({
@@ -18,6 +19,7 @@ import { validateEnv } from './common/env.validation';
     PrismaModule,
     AgentModule,
     MessagesModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [
