@@ -86,9 +86,6 @@ export class AnthropicLlmClient implements LlmClient {
           content: opts.userPrompt ?? input,
         },
       ],
-      response_format: {
-        type: 'json_object',
-      },
     });
 
     const latencyMs = Date.now() - startedAt;
