@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -50,9 +51,15 @@ export class DashboardController {
   @Patch('settings')
   updateSettings(
     @Headers('x-dashboard-token') token: string | undefined,
-    @Body() body: { autonomyEnabled: boolean },
+    @Body() body: unknown,
   ) {
-    return this.dashboardService.updateSettings(this.guard(token), body);
+    const parsed = body as Record<string, unknown>;
+    if (!parsed || typeof parsed.autonomyEnabled !== 'boolean') {
+      throw new BadRequestException('autonomyEnabled must be a boolean');
+    }
+    return this.dashboardService.updateSettings(this.guard(token), {
+      autonomyEnabled: parsed.autonomyEnabled,
+    });
   }
 
   @Post('approvals/:id/send')
