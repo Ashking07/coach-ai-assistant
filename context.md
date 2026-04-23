@@ -240,7 +240,7 @@ coach-assistant/
 
 ## Development phases (2-week sprint)
 
-### Current status: end of Day 1 / Phase 2 complete
+### Current status: end of Day 5 / Phase 3 complete
 - ✅ Monorepo scaffolded (pnpm workspaces)
 - ✅ Docker Compose for Postgres + Redis
 - ✅ NestJS backend scaffolded
@@ -249,7 +249,17 @@ coach-assistant/
 - ✅ Vercel + Render deployed walking skeleton
 - ✅ Separate BullMQ worker entrypoint (NestFactory.createApplicationContext)
 - ✅ Smoke test passed: enqueue → Redis → worker consumes → completed
-- ✅ Phase 2 — Message ingestion pipeline: inbound HTTP accepts the normalized `ParentMessage` JSON (Zod-validated, schema in `@coach/shared`); `MessagesService.ingest()` is the single choke point that writes `Message` and enqueues `MESSAGE_INGESTED`; worker writes a placeholder `AgentDecision` (`intent=NOT_PROCESSED`, `actionTaken=INGESTED`). Boot-time orphan recovery re-enqueues any inbound messages missing a decision.
+- ✅ Phase 2 — Message ingestion pipeline: inbound HTTP accepts the normalized `ParentMessage` JSON (Zod-validated, schema in `@coach/shared`); `MessagesService.ingest()` is the single choke point that writes `Message` and enqueues `MESSAGE_INGESTED`. Boot-time orphan recovery re-enqueues any inbound messages missing a decision.
+- ✅ Phase 3 Day 4 — Intent classification + context loading: `ClassifyIntentState` (Haiku 4.5) + `LoadContextState` (parent/kids/sessions/availableSlots from Postgres).
+- ✅ Phase 3 Day 5 — Guardrails + reply drafting + full agent loop:
+  - `PolicyGate`: deterministic rule engine — unknown sender, sensitive keywords, ESCALATE intents → always ESCALATE regardless of LLM output
+  - `ConfidenceGate`: routes BOOK+verified+high-confidence+slots→AUTO; all other BOOK→APPROVE; QUESTION_LOGISTICS+verified+high-confidence→AUTO; everything else→APPROVE
+  - `DraftReplyState`: Sonnet 4.6 drafts a warm professional reply using parent name, kid, intent, and available slot labels
+  - `validateDraft`: hallucination backstop — if draft mentions a time not in availableSlots, downgrades AUTO→APPROVE
+  - `OutboundService`: three terminal writers — `autoSend` (writes OUTBOUND Message + AUTO_SENT AgentDecision), `queueForApproval` (writes ApprovalQueue + QUEUED_FOR_APPROVAL decision), `escalate` (writes ESCALATED/CLASSIFY_FAILED/DRAFT_FAILED/SEND_FAILED decision)
+  - `MessagesService.processIngestedMessage`: full 10-step pipeline with exactly one AgentDecision per message; each failure stage (classify/draft/send) writes a distinct actionTaken; markProcessed() runs on all exit paths
+  - **Happy path demo:** verified parent + BOOK + confidence ≥ 0.8 + available slot → `AUTO_SENT` with outbound message written
+  - **Escalation demo:** "Can you discount?" → PolicyGate keyword check → `ESCALATED`
 - ⏳ Need to: verify cross-service enqueue/consume on Render (production smoke test)
 
 ### Phase 1: Foundation (Days 1–2)
@@ -283,7 +293,7 @@ coach-assistant/
 - Build `LLMClient` abstraction (Anthropic SDK wrapper, typed methods)
 - Implement `CLASSIFY_INTENT` state (Haiku 4.5, returns structured intent with confidence)
 - Use Zod schema for LLM structured output validation
-- Implement `LOAD_CONTEXT` state (pulls parent + kid + recent messages from Postgres, caches in Redis)
+- Implement `LOAD_CONTEXT` state (pulls parent + kid + recent messages from Postgres; Redis cache deferred to Day 5)
 - AgentDecision logs intent + confidence
 - Write tests for intent classification with fixed fixtures
 

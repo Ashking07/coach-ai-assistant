@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BullMqModule } from './bullmq.module';
+import { PrismaModule } from './prisma.module';
+import { AgentModule } from './modules/agent/agent.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { validateEnv } from './common/env.validation';
 
@@ -13,6 +15,8 @@ import { validateEnv } from './common/env.validation';
       ignoreEnvFile: true,
     }),
     BullMqModule,
+    PrismaModule,
+    AgentModule,
     MessagesModule,
   ],
   controllers: [AppController],

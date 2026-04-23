@@ -18,11 +18,7 @@ export type EscalateParams = {
   coachId: string;
   messageId: string;
   reason: string;
-  actionTaken:
-    | 'ESCALATED'
-    | 'CLASSIFY_FAILED'
-    | 'DRAFT_FAILED'
-    | 'SEND_FAILED';
+  actionTaken: 'ESCALATED' | 'CLASSIFY_FAILED' | 'DRAFT_FAILED' | 'SEND_FAILED';
   classifyResult?: ClassifyIntentResult;
 };
 
@@ -56,11 +52,8 @@ export class OutboundService {
         reasoning: classifyResult.reasoning,
         llmModel: draftResult.model,
         tokensIn: classifyResult.usage.tokensIn + draftResult.usage.tokensIn,
-        tokensOut:
-          classifyResult.usage.tokensOut + draftResult.usage.tokensOut,
-        latencyMs: Math.round(
-          classifyResult.latencyMs + draftResult.latencyMs,
-        ),
+        tokensOut: classifyResult.usage.tokensOut + draftResult.usage.tokensOut,
+        latencyMs: Math.round(classifyResult.latencyMs + draftResult.latencyMs),
       },
     });
   }
@@ -87,11 +80,8 @@ export class OutboundService {
         reasoning: classifyResult.reasoning,
         llmModel: draftResult.model,
         tokensIn: classifyResult.usage.tokensIn + draftResult.usage.tokensIn,
-        tokensOut:
-          classifyResult.usage.tokensOut + draftResult.usage.tokensOut,
-        latencyMs: Math.round(
-          classifyResult.latencyMs + draftResult.latencyMs,
-        ),
+        tokensOut: classifyResult.usage.tokensOut + draftResult.usage.tokensOut,
+        latencyMs: Math.round(classifyResult.latencyMs + draftResult.latencyMs),
       },
     });
   }

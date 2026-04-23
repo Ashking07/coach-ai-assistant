@@ -21,11 +21,7 @@ export type AgentContext = {
   availableSlots: AvailableSlot[];
 };
 
-function formatSlotLabel(
-  startAt: Date,
-  endAt: Date,
-  timezone: string,
-): string {
+function formatSlotLabel(startAt: Date, endAt: Date, timezone: string): string {
   const datePart = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     weekday: 'long',
@@ -129,8 +125,7 @@ export class LoadContextState {
       .filter((slot) => {
         return !conflictingSessions.some((session) => {
           const sessionEnd = new Date(
-            session.scheduledAt.getTime() +
-              session.durationMinutes * 60 * 1000,
+            session.scheduledAt.getTime() + session.durationMinutes * 60 * 1000,
           );
           return session.scheduledAt < slot.endAt && sessionEnd > slot.startAt;
         });

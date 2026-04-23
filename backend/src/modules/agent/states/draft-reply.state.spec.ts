@@ -56,10 +56,7 @@ describe('DraftReplyState', () => {
     };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [
-        DraftReplyState,
-        { provide: LLM_CLIENT, useValue: mockLlm },
-      ],
+      providers: [DraftReplyState, { provide: LLM_CLIENT, useValue: mockLlm }],
     }).compile();
 
     state = moduleRef.get<DraftReplyState>(DraftReplyState);
@@ -67,9 +64,9 @@ describe('DraftReplyState', () => {
 
   it('calls LLM with Sonnet model and slot labels in user prompt', async () => {
     const result = await state.draft({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      message: makeMockMessage() as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      message: makeMockMessage(),
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       context: makeMockContext() as any,
       intent: 'BOOK',
       tier: ConfidenceTier.AUTO,
@@ -80,7 +77,6 @@ describe('DraftReplyState', () => {
     expect(result.model).toBe('claude-sonnet-4-6');
     expect(result.latencyMs).toBe(320);
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const callOpts = mockLlm.classify.mock.calls[0]?.[1] as {
       model: string;
       maxTokens: number;
@@ -103,15 +99,14 @@ describe('DraftReplyState', () => {
     });
 
     await state.draft({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      message: makeMockMessage() as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      message: makeMockMessage(),
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       context: makeMockContext(null) as any,
       intent: 'BOOK',
       tier: ConfidenceTier.APPROVE,
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const callOpts = mockLlm.classify.mock.calls[0]?.[1] as {
       userPrompt: string;
     };
@@ -120,15 +115,14 @@ describe('DraftReplyState', () => {
 
   it('passes APPROVE tier hint when tier is APPROVE', async () => {
     await state.draft({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      message: makeMockMessage() as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      message: makeMockMessage(),
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       context: makeMockContext() as any,
       intent: 'RESCHEDULE',
       tier: ConfidenceTier.APPROVE,
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const callOpts = mockLlm.classify.mock.calls[0]?.[1] as {
       userPrompt: string;
     };

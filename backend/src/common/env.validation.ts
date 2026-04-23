@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
+  ANTHROPIC_API_KEY: z.string().min(1),
   REDIS_URL: z.string().url().optional(),
   INTERNAL_INGEST_TOKEN: z
     .string()

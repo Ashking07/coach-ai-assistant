@@ -59,6 +59,8 @@ Prisma uses `prisma.config.ts` (new-style config; `.env` is loaded via `dotenv/c
 
 `INTERNAL_INGEST_TOKEN` — secret for `POST /api/messages/inbound`. Must be ≥16 chars; app crashes on boot if missing. Guards the endpoint with a constant-time comparison (`timingSafeEqualStr`).
 
+`ANTHROPIC_API_KEY` — required for Phase 3+ classification/drafting states. App crashes on boot if missing due to env validation fail-fast.
+
 ### Dev smoke test
 
 With docker compose up and both web + worker running:
@@ -85,4 +87,4 @@ No test runner is configured on the frontend.
 
 ## Deployment notes
 
-Backend is deployed to Render at `coach-ai-assistant-backend.onrender.com` (hardcoded in the CORS default). Ensure `PORT`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGIN`, and `INTERNAL_INGEST_TOKEN` are set in the Render environment — the code relies on env defaults that only make sense locally.
+Backend is deployed to Render at `coach-ai-assistant-backend.onrender.com` (hardcoded in the CORS default). Ensure `PORT`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGIN`, `INTERNAL_INGEST_TOKEN`, and `ANTHROPIC_API_KEY` are set in the Render environment — the code relies on env defaults that only make sense locally.

@@ -4,6 +4,14 @@ import { PrismaService } from '../../prisma.service';
 import { TEST_JOB_QUEUE } from '../../bullmq.module';
 import { MESSAGE_INGESTED_JOB } from '../../bullmq.constants';
 import type { ParentMessage } from '@coach/shared';
+import { ClassifyIntentState } from '../agent/states/classify-intent.state';
+import { LoadContextState } from '../agent/states/load-context.state';
+import { PolicyGate } from '../agent/gates/policy-gate';
+import { ConfidenceGate } from '../agent/gates/confidence-gate';
+import { DraftReplyState } from '../agent/states/draft-reply.state';
+import { OutboundService } from '../agent/outbound/outbound.service';
+import { validateDraft } from '../agent/states/validate-draft.state';
+import { ConfidenceTier } from '@prisma/client';
 
 export type IngestResult =
   | { messageId: string; duplicate: false; enqueued: true; jobId: string }
@@ -16,6 +24,12 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(TEST_JOB_QUEUE) private readonly queue: Queue,
+    private readonly classifyIntentState: ClassifyIntentState,
+    private readonly loadContextState: LoadContextState,
+    private readonly policyGate: PolicyGate,
+    private readonly confidenceGate: ConfidenceGate,
+    private readonly draftReplyState: DraftReplyState,
+    private readonly outboundService: OutboundService,
   ) {}
 
   async ingest(msg: ParentMessage): Promise<IngestResult> {
@@ -137,20 +151,131 @@ export class MessagesService {
       include: { parent: true },
     });
 
-    await this.prisma.agentDecision.create({
-      data: {
+    const markProcessed = () =>
+      this.prisma.message.update({
+        where: { id: message.id },
+        data: { processedAt: new Date() },
+      });
+
+    // Stage 1: classify
+    let classifyResult: Awaited<
+      ReturnType<ClassifyIntentState['classifyIntent']>
+    >;
+    try {
+      classifyResult = await this.classifyIntentState.classifyIntent({
+        messageId: message.id,
+        content: message.content,
+        parentKnown: message.parent.isVerified,
+      });
+    } catch (error) {
+      await this.outboundService.escalate({
         coachId: message.coachId,
         messageId: message.id,
-        intent: 'NOT_PROCESSED',
-        actionTaken: 'INGESTED',
-      },
+        reason: this.formatError(error),
+        actionTaken: 'CLASSIFY_FAILED',
+        classifyResult: undefined,
+      });
+      await markProcessed();
+      return true;
+    }
+
+    // Stage 2: load context
+    const context = await this.loadContextState.loadContext(
+      message.parentId,
+      message.coachId,
+    );
+
+    // Stage 3: policy gate
+    const policyViolation = this.policyGate.check({
+      intent: classifyResult.intent,
+      content: message.content,
+      parentKnown: message.parent.isVerified,
+    });
+    if (policyViolation) {
+      await this.outboundService.escalate({
+        coachId: message.coachId,
+        messageId: message.id,
+        reason: policyViolation.reason,
+        actionTaken: 'ESCALATED',
+        classifyResult,
+      });
+      await markProcessed();
+      return true;
+    }
+
+    // Stage 4: confidence gate
+    let tier = this.confidenceGate.determine({
+      intent: classifyResult.intent,
+      confidence: classifyResult.confidence,
+      parentKnown: message.parent.isVerified,
+      hasAvailableSlots: context.availableSlots.length > 0,
     });
 
-    await this.prisma.message.update({
-      where: { id: message.id },
-      data: { processedAt: new Date() },
-    });
+    // Stage 5: draft
+    let draftResult: Awaited<ReturnType<DraftReplyState['draft']>>;
+    try {
+      draftResult = await this.draftReplyState.draft({
+        message,
+        intent: classifyResult.intent,
+        tier,
+        context,
+      });
+    } catch (error) {
+      await this.outboundService.escalate({
+        coachId: message.coachId,
+        messageId: message.id,
+        reason: this.formatError(error),
+        actionTaken: 'DRAFT_FAILED',
+        classifyResult,
+      });
+      await markProcessed();
+      return true;
+    }
 
+    // Stage 6: validate draft (hallucination backstop)
+    const validation = validateDraft({
+      draft: draftResult.draft,
+      availableSlots: context.availableSlots,
+      tier,
+      intent: classifyResult.intent,
+    });
+    if (validation.downgraded) {
+      tier = validation.tier;
+    }
+
+    // Stage 7: send
+    const outboundParams = {
+      coachId: message.coachId,
+      messageId: message.id,
+      parentId: message.parentId,
+      channel: message.parent.preferredChannel,
+      classifyResult,
+      draftResult,
+    };
+    try {
+      if (tier === ConfidenceTier.AUTO) {
+        await this.outboundService.autoSend(outboundParams);
+      } else {
+        await this.outboundService.queueForApproval(outboundParams);
+      }
+    } catch (error) {
+      await this.outboundService.escalate({
+        coachId: message.coachId,
+        messageId: message.id,
+        reason: this.formatError(error),
+        actionTaken: 'SEND_FAILED',
+        classifyResult,
+      });
+    }
+
+    await markProcessed();
     return true;
+  }
+
+  private formatError(error: unknown): string {
+    if (error instanceof Error) {
+      return `${error.name}: ${error.message}`.slice(0, 1000);
+    }
+    return 'Unknown error';
   }
 }
