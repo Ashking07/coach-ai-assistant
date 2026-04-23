@@ -143,12 +143,12 @@ export class DashboardService {
   async getHome(coachId: string): Promise<HomeResponseDto> {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [fireDecisions, pendingApprovals, todaySessions, autoHandledDecisions, handledCount] =
+    const [fireDecisions, pendingApprovals, todaySessions, autoHandledDecisions] =
       await Promise.all([
         this.prisma.agentDecision.findMany({
           where: {
             coachId,
-            actionTaken: { notIn: ['AUTO_SENT', 'QUEUED_FOR_APPROVAL'] },
+            actionTaken: { in: ['ESCALATED', 'CLASSIFY_FAILED', 'DRAFT_FAILED', 'SEND_FAILED'] },
             createdAt: { gte: since24h },
           },
           include: {
@@ -169,6 +169,7 @@ export class DashboardService {
           orderBy: { createdAt: 'desc' },
         }),
         (() => {
+          // Uses server timezone (UTC in prod); coach timezone alignment is a future improvement
           const start = new Date();
           start.setHours(0, 0, 0, 0);
           const end = new Date();
@@ -184,10 +185,9 @@ export class DashboardService {
           include: { message: { include: { parent: { include: { kids: { take: 1 } } } } } },
           orderBy: { createdAt: 'desc' },
         }),
-        this.prisma.agentDecision.count({
-          where: { coachId, actionTaken: 'AUTO_SENT', createdAt: { gte: since24h } },
-        }),
       ]);
+
+    const handledCount = autoHandledDecisions.length;
 
     const fires: FireDto[] = fireDecisions.map((d) => ({
       id: d.id,

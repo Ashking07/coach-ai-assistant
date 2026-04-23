@@ -65,6 +65,11 @@ describe('DashboardService.getHome', () => {
   it('maps escalated decisions into fires with parent/kid/preview', async () => {
     const prisma = makePrismaMock();
     const now = new Date();
+    const autoHandledStubs = [
+      { id: 'ah1', actionTaken: 'AUTO_SENT', intent: 'PAYMENT', createdAt: now, reasoning: null, message: { parent: { name: 'P1', kids: [{ name: 'K1' }] } } },
+      { id: 'ah2', actionTaken: 'AUTO_SENT', intent: 'RESCHEDULE', createdAt: now, reasoning: null, message: { parent: { name: 'P2', kids: [{ name: 'K2' }] } } },
+      { id: 'ah3', actionTaken: 'AUTO_SENT', intent: 'GENERAL', createdAt: now, reasoning: null, message: { parent: { name: 'P3', kids: [{ name: 'K3' }] } } },
+    ];
     prisma.agentDecision.findMany
       .mockResolvedValueOnce([
         {
@@ -78,10 +83,9 @@ describe('DashboardService.getHome', () => {
           },
         },
       ])
-      .mockResolvedValueOnce([]); // autoHandled call
+      .mockResolvedValueOnce(autoHandledStubs); // autoHandled call
     prisma.approvalQueue.findMany.mockResolvedValue([]);
     prisma.session.findMany.mockResolvedValue([]);
-    prisma.agentDecision.count.mockResolvedValue(3);
 
     const service = await makeService(prisma);
     const result = await service.getHome('coach-1');
@@ -122,7 +126,6 @@ describe('DashboardService.getHome', () => {
       },
     ]);
     prisma.session.findMany.mockResolvedValue([]);
-    prisma.agentDecision.count.mockResolvedValue(0);
 
     const service = await makeService(prisma);
     const result = await service.getHome('coach-1');
