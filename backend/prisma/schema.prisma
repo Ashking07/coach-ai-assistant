@@ -64,6 +64,7 @@ model Coach {
   phone            String
   timezone         String   @default("America/Los_Angeles")
   stripeAccountId  String?
+  autonomyEnabled  Boolean  @default(true)
   createdAt        DateTime @default(now())
 
   parents          Parent[]
