@@ -90,11 +90,40 @@ async function main() {
     });
   }
 
+  // Availability: 1-hour slots at 9 AM Mon–Fri for the next 14 days (pre-sliced)
+  const SLOT_HOUR = 9;
+  for (let daysAhead = 1; daysAhead <= 14; daysAhead++) {
+    const slotDay = new Date(now);
+    slotDay.setDate(slotDay.getDate() + daysAhead);
+    const dayOfWeek = slotDay.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
+    const startAt = new Date(slotDay);
+    startAt.setHours(SLOT_HOUR, 0, 0, 0);
+    const endAt = new Date(startAt);
+    endAt.setHours(SLOT_HOUR + 1, 0, 0, 0);
+
+    const slotId = `avail-${daysAhead}`;
+    await prisma.availability.upsert({
+      where: { id: slotId },
+      create: {
+        id: slotId,
+        coachId: coach.id,
+        startAt,
+        endAt,
+        isBlocked: false,
+        reason: '',
+      },
+      update: {},
+    });
+  }
+
   const counts = {
     coaches: await prisma.coach.count(),
     parents: await prisma.parent.count(),
     kids: await prisma.kid.count(),
     sessions: await prisma.session.count(),
+    availability: await prisma.availability.count(),
   };
 
   console.log('Seed complete:', counts);
