@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { DemoWebChatGateway } from './modules/demo-chat/web-chat.gateway';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,6 +18,9 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
   });
+
+  const gateway = app.get(DemoWebChatGateway);
+  gateway.attachToHttpServer(app.getHttpServer());
 
   await app.listen(process.env.PORT ?? 3002);
 }
