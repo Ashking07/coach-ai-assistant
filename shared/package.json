@@ -12,6 +12,7 @@
     }
   },
   "scripts": {
+    "prepare": "tsc",
     "build": "tsc"
   },
   "dependencies": {
