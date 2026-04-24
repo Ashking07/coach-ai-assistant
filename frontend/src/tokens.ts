@@ -1,8 +1,8 @@
 export const T = {
   moss: '#7A8B6E',
-  sunrise: '#C47B3E',
-  amber: '#D4A840',
-  terracotta: '#B85C3A',
+  sunrise: '#E26A2C',
+  amber: '#E2A13C',
+  terracotta: '#C85A3E',
 } as const;
 
 export const darkVars = {
