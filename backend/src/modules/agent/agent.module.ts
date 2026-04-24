@@ -7,9 +7,11 @@ import { DraftReplyState } from './states/draft-reply.state';
 import { PolicyGate } from './gates/policy-gate';
 import { ConfidenceGate } from './gates/confidence-gate';
 import { OutboundService } from './outbound/outbound.service';
+import { ChannelSenderModule } from './channels/channel-sender.module';
 
 @Global()
 @Module({
+  imports: [ChannelSenderModule],
   providers: [
     AnthropicLlmClient,
     { provide: LLM_CLIENT, useExisting: AnthropicLlmClient },
@@ -21,6 +23,7 @@ import { OutboundService } from './outbound/outbound.service';
     OutboundService,
   ],
   exports: [
+    ChannelSenderModule,
     LLM_CLIENT,
     ClassifyIntentState,
     LoadContextState,
