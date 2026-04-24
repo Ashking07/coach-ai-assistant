@@ -98,9 +98,17 @@ export class AnthropicLlmClient implements LlmClient {
       throw new LlmOutputError('LLM output did not contain text content');
     }
 
+    const rawText = firstText.text.trim();
+    const jsonText = rawText.startsWith('```')
+      ? rawText
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```$/, '')
+          .trim()
+      : rawText;
+
     let parsedJson: unknown;
     try {
-      parsedJson = JSON.parse(firstText.text);
+      parsedJson = JSON.parse(jsonText);
     } catch (error) {
       throw new LlmOutputError('LLM output was not valid JSON', error);
     }
