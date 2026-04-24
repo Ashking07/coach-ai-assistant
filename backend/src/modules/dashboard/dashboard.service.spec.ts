@@ -15,10 +15,7 @@ function makePrismaMock() {
 
 async function makeService(prisma: ReturnType<typeof makePrismaMock>) {
   const moduleRef = await Test.createTestingModule({
-    providers: [
-      DashboardService,
-      { provide: PrismaService, useValue: prisma },
-    ],
+    providers: [DashboardService, { provide: PrismaService, useValue: prisma }],
   }).compile();
   return moduleRef.get(DashboardService);
 }
@@ -66,9 +63,30 @@ describe('DashboardService.getHome', () => {
     const prisma = makePrismaMock();
     const now = new Date();
     const autoHandledStubs = [
-      { id: 'ah1', actionTaken: 'AUTO_SENT', intent: 'PAYMENT', createdAt: now, reasoning: null, message: { parent: { name: 'P1', kids: [{ name: 'K1' }] } } },
-      { id: 'ah2', actionTaken: 'AUTO_SENT', intent: 'RESCHEDULE', createdAt: now, reasoning: null, message: { parent: { name: 'P2', kids: [{ name: 'K2' }] } } },
-      { id: 'ah3', actionTaken: 'AUTO_SENT', intent: 'GENERAL', createdAt: now, reasoning: null, message: { parent: { name: 'P3', kids: [{ name: 'K3' }] } } },
+      {
+        id: 'ah1',
+        actionTaken: 'AUTO_SENT',
+        intent: 'PAYMENT',
+        createdAt: now,
+        reasoning: null,
+        message: { parent: { name: 'P1', kids: [{ name: 'K1' }] } },
+      },
+      {
+        id: 'ah2',
+        actionTaken: 'AUTO_SENT',
+        intent: 'RESCHEDULE',
+        createdAt: now,
+        reasoning: null,
+        message: { parent: { name: 'P2', kids: [{ name: 'K2' }] } },
+      },
+      {
+        id: 'ah3',
+        actionTaken: 'AUTO_SENT',
+        intent: 'GENERAL',
+        createdAt: now,
+        reasoning: null,
+        message: { parent: { name: 'P3', kids: [{ name: 'K3' }] } },
+      },
     ];
     prisma.agentDecision.findMany
       .mockResolvedValueOnce([

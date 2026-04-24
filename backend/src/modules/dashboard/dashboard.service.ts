@@ -143,49 +143,65 @@ export class DashboardService {
   async getHome(coachId: string): Promise<HomeResponseDto> {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [fireDecisions, pendingApprovals, todaySessions, autoHandledDecisions] =
-      await Promise.all([
-        this.prisma.agentDecision.findMany({
-          where: {
-            coachId,
-            actionTaken: { in: ['ESCALATED', 'CLASSIFY_FAILED', 'DRAFT_FAILED', 'SEND_FAILED'] },
-            createdAt: { gte: since24h },
+    const [
+      fireDecisions,
+      pendingApprovals,
+      todaySessions,
+      autoHandledDecisions,
+    ] = await Promise.all([
+      this.prisma.agentDecision.findMany({
+        where: {
+          coachId,
+          actionTaken: {
+            in: ['ESCALATED', 'CLASSIFY_FAILED', 'DRAFT_FAILED', 'SEND_FAILED'],
           },
-          include: {
-            message: { include: { parent: { include: { kids: { take: 1 } } } } },
-          },
-          orderBy: { createdAt: 'desc' },
-        }),
-        this.prisma.approvalQueue.findMany({
-          where: { coachId, status: 'PENDING' },
-          include: {
-            message: {
-              include: {
-                parent: { include: { kids: { take: 1 } } },
-                agentDecisions: { orderBy: { createdAt: 'desc' }, take: 1 },
-              },
+          createdAt: { gte: since24h },
+        },
+        include: {
+          message: { include: { parent: { include: { kids: { take: 1 } } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.approvalQueue.findMany({
+        where: { coachId, status: 'PENDING' },
+        include: {
+          message: {
+            include: {
+              parent: { include: { kids: { take: 1 } } },
+              agentDecisions: { orderBy: { createdAt: 'desc' }, take: 1 },
             },
           },
-          orderBy: { createdAt: 'desc' },
-        }),
-        (() => {
-          // Uses server timezone (UTC in prod); coach timezone alignment is a future improvement
-          const start = new Date();
-          start.setHours(0, 0, 0, 0);
-          const end = new Date();
-          end.setHours(23, 59, 59, 999);
-          return this.prisma.session.findMany({
-            where: { coachId, scheduledAt: { gte: start, lte: end }, status: { not: 'CANCELLED' } },
-            include: { kid: true },
-            orderBy: { scheduledAt: 'asc' },
-          });
-        })(),
-        this.prisma.agentDecision.findMany({
-          where: { coachId, actionTaken: 'AUTO_SENT', createdAt: { gte: since24h } },
-          include: { message: { include: { parent: { include: { kids: { take: 1 } } } } } },
-          orderBy: { createdAt: 'desc' },
-        }),
-      ]);
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      (() => {
+        // Uses server timezone (UTC in prod); coach timezone alignment is a future improvement
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        return this.prisma.session.findMany({
+          where: {
+            coachId,
+            scheduledAt: { gte: start, lte: end },
+            status: { not: 'CANCELLED' },
+          },
+          include: { kid: true },
+          orderBy: { scheduledAt: 'asc' },
+        });
+      })(),
+      this.prisma.agentDecision.findMany({
+        where: {
+          coachId,
+          actionTaken: 'AUTO_SENT',
+          createdAt: { gte: since24h },
+        },
+        include: {
+          message: { include: { parent: { include: { kids: { take: 1 } } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
     const handledCount = autoHandledDecisions.length;
 
@@ -268,10 +284,7 @@ export class DashboardService {
       tokens: (d.tokensIn ?? 0) + (d.tokensOut ?? 0),
       latencyMs: d.latencyMs ?? 0,
       incoming: d.message.content,
-      draft:
-        d.message.approvals[0]?.draftReply ??
-        d.reasoning ??
-        '(auto-sent)',
+      draft: d.message.approvals[0]?.draftReply ?? d.reasoning ?? '(auto-sent)',
       trace: buildTrace(d),
     }));
   }
@@ -297,7 +310,9 @@ export class DashboardService {
   }
 
   async getSettings(coachId: string): Promise<SettingsDto> {
-    const coach = await this.prisma.coach.findUnique({ where: { id: coachId } });
+    const coach = await this.prisma.coach.findUnique({
+      where: { id: coachId },
+    });
     if (!coach) throw new NotFoundException('Coach not found');
     return {
       id: coach.id,

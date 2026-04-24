@@ -7,9 +7,7 @@ const EnvSchema = z.object({
   INTERNAL_INGEST_TOKEN: z
     .string()
     .min(16, 'INTERNAL_INGEST_TOKEN must be >=16 chars'),
-  DASHBOARD_TOKEN: z
-    .string()
-    .min(16, 'DASHBOARD_TOKEN must be >=16 chars'),
+  DASHBOARD_TOKEN: z.string().min(16, 'DASHBOARD_TOKEN must be >=16 chars'),
   COACH_ID: z.string().min(1, 'COACH_ID must be set'),
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
