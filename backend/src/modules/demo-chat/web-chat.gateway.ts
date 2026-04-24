@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage, Server as HttpServer } from 'node:http';
@@ -17,6 +17,7 @@ export class DemoWebChatGateway implements OnModuleDestroy {
     private readonly tokenService: DemoTokenService,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => MessagesService))
     private readonly messagesService: MessagesService,
   ) {}
 
