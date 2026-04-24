@@ -1,22 +1,59 @@
-import { useQuery } from '@tanstack/react-query'
-import { Button } from './components/ui/button'
+import { useMemo, useState } from 'react';
+import { SideNav, type Tab } from './components/side-nav';
+import { BottomTabBar } from './components/bottom-tab-bar';
+import { HomeScreen } from './components/screens/home';
+import { AuditScreen } from './components/screens/audit';
+import { ParentsScreen } from './components/screens/parents';
+import { SettingsScreen } from './components/screens/settings';
+import { darkVars, lightVars } from './tokens';
 
-function App() {
-  const apiUrl = import.meta.env.VITE_API_URL
+type Theme = 'dark' | 'light';
 
-  const { data } = useQuery({
-    queryKey: ['health'],
-    queryFn: () =>
-      fetch(new URL('/health', apiUrl)).then((r) => r.json()),
-  })
-
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold">Coach Assistant</h1>
-      <p>Backend says: {JSON.stringify(data)}</p>
-      <Button>Click me</Button>
-    </div>
-  )
+function getInitialTheme(): Theme {
+  try {
+    const saved = localStorage.getItem('coach-theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {}
+  return 'dark';
 }
 
-export default App
+export default function App() {
+  const [tab, setTab] = useState<Tab>('home');
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+
+  const themeStyle = useMemo(
+    () => (theme === 'dark' ? darkVars : lightVars) as React.CSSProperties,
+    [theme],
+  );
+
+  const toggleTheme = () => {
+    setTheme((t) => {
+      const next: Theme = t === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('coach-theme', next); } catch {}
+      return next;
+    });
+  };
+
+  return (
+    <div
+      className="min-h-dvh flex"
+      style={{
+        ...themeStyle,
+        background: 'var(--bg)',
+        color: 'var(--text)',
+        fontFamily: 'Inter Tight, system-ui, sans-serif',
+      }}
+    >
+      <SideNav active={tab} onChange={setTab} />
+
+      <main className="flex-1 min-w-0">
+        {tab === 'home' && <HomeScreen theme={theme} onToggleTheme={toggleTheme} />}
+        {tab === 'audit' && <AuditScreen />}
+        {tab === 'parents' && <ParentsScreen />}
+        {tab === 'settings' && <SettingsScreen />}
+      </main>
+
+      <BottomTabBar active={tab} onChange={setTab} />
+    </div>
+  );
+}
