@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { TwilioModule } from './modules/twilio/twilio.module';
 import { validateEnv } from './common/env.validation';
 
 @Module({
@@ -20,6 +21,7 @@ import { validateEnv } from './common/env.validation';
     AgentModule,
     MessagesModule,
     DashboardModule,
+    TwilioModule,
   ],
   controllers: [AppController],
   providers: [
