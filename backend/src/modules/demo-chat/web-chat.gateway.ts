@@ -1,17 +1,23 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
 import { IncomingMessage, Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
+import { PrismaService } from '../../prisma.service';
+import { MessagesService } from '../messages/messages.service';
 import { DemoTokenService } from './demo-token.service';
 
 @Injectable()
 export class DemoWebChatGateway implements OnModuleDestroy {
+  private readonly logger = new Logger(DemoWebChatGateway.name);
   private wsServer: WebSocketServer | null = null;
   private readonly socketsByParent = new Map<string, Set<WebSocket>>();
 
   constructor(
     private readonly tokenService: DemoTokenService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly messagesService: MessagesService,
   ) {}
 
   attachToHttpServer(server: HttpServer): void {
@@ -85,16 +91,45 @@ export class DemoWebChatGateway implements OnModuleDestroy {
     existing.add(ws);
     this.socketsByParent.set(parentId, existing);
 
+    ws.on('message', (rawData) => {
+      void this.handleParentMessage(parentId, rawData.toString());
+    });
+
     ws.on('close', () => {
       const sockets = this.socketsByParent.get(parentId);
-      if (!sockets) {
-        return;
-      }
+      if (!sockets) return;
       sockets.delete(ws);
-      if (sockets.size === 0) {
-        this.socketsByParent.delete(parentId);
-      }
+      if (sockets.size === 0) this.socketsByParent.delete(parentId);
     });
+  }
+
+  private async handleParentMessage(parentId: string, text: string): Promise<void> {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const parent = await this.prisma.parent.findUnique({
+      where: { id: parentId },
+      select: { phone: true, name: true, coachId: true },
+    });
+
+    if (!parent) {
+      this.logger.warn({ event: 'DEMO_PARENT_NOT_FOUND', parentId });
+      return;
+    }
+
+    try {
+      await this.messagesService.ingest({
+        coachId: parent.coachId,
+        channel: 'WEB_CHAT',
+        fromPhone: parent.phone,
+        fromName: parent.name ?? undefined,
+        content: trimmed,
+        providerMessageId: `demo-${randomUUID()}`,
+        receivedAt: new Date(),
+      });
+    } catch (err) {
+      this.logger.error({ event: 'DEMO_INGEST_FAILED', parentId, err });
+    }
   }
 
   private parseUrl(request: IncomingMessage): URL {

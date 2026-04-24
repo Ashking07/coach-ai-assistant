@@ -6,6 +6,7 @@ import { T } from '../../tokens';
 import { FireCard, ApprovalCard, SessionCard } from '../cards';
 import { ApprovalDetail } from '../approval-detail';
 import { IntentBadge } from '../badges';
+import { DemoQRCard } from '../demo-qr-card';
 
 const REASON_TEXT: Record<string, string> = {
   ESCALATED: 'Policy exception detected — this message touched a topic the agent is not allowed to auto-answer on your behalf. Needs your voice.',
@@ -399,6 +400,10 @@ export function HomeScreen({
           <AutoHandledSection data={data.autoHandled} />
         </>
       )}
+
+      {/* Demo QR */}
+      <SectionLabel count={0}>Demo.</SectionLabel>
+      <DemoQRCard />
 
       {/* Approval detail overlay */}
       {activeFire && (

@@ -80,6 +80,12 @@ export interface SettingsResponse {
   autonomyEnabled: boolean;
 }
 
+export interface ParentSessionResponse {
+  token: string;
+  expiresAt: string;
+  wsUrl: string;
+}
+
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
 
 const apiUrl = (import.meta.env.VITE_API_URL as string) ?? 'http://localhost:3002';
@@ -116,4 +122,9 @@ export const api = {
     apiFetch<void>(`/api/dashboard/approvals/${id}/send`, { method: 'POST' }),
   dismissApproval: (id: string) =>
     apiFetch<void>(`/api/dashboard/approvals/${id}/dismiss`, { method: 'POST' }),
+  createParentSession: (parentId: string) =>
+    apiFetch<ParentSessionResponse>('/api/demo/parent-session', {
+      method: 'POST',
+      body: JSON.stringify({ parentId }),
+    }),
 };
