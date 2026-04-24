@@ -34,23 +34,29 @@ export class DemoWebChatGateway implements OnModuleDestroy {
         return;
       }
 
+      this.logger.log({ event: 'WS_UPGRADE', path: parsedUrl.pathname });
+
       if (!this.isDemoEnabled()) {
+        this.logger.warn({ event: 'WS_REJECTED', reason: 'DEMO_DISABLED' });
         socket.destroy();
         return;
       }
 
       const token = parsedUrl.searchParams.get('token');
       if (!token) {
+        this.logger.warn({ event: 'WS_REJECTED', reason: 'NO_TOKEN' });
         socket.destroy();
         return;
       }
 
       const payload = this.tokenService.verifyParentToken(token);
       if (!payload) {
+        this.logger.warn({ event: 'WS_REJECTED', reason: 'INVALID_TOKEN', tokenPrefix: token.slice(0, 20) });
         socket.destroy();
         return;
       }
 
+      this.logger.log({ event: 'WS_ACCEPTED', parentId: payload.parentId });
       this.wsServer?.handleUpgrade(request, socket, head, (ws) => {
         this.registerConnection(payload.parentId, ws);
       });

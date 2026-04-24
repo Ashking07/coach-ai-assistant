@@ -35,6 +35,7 @@ export function useReconnectingWebSocket(
       socket.onopen = () => {
         retryCountRef.current = 0;
         setStatus('open');
+        setError(null);
       };
 
       socket.onmessage = (event) => {
