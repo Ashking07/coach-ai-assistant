@@ -98,13 +98,13 @@ function slotToBlock(slot: AvailabilitySlot, monday: Date): Block | null {
   };
 }
 
-// Convert a day index + slot-start-minutes → ISO datetime strings for the API
+// Convert a day index + slot-start-minutes → ISO datetime strings for the API (1-hour blocks)
 function blockToDateRange(monday: Date, dayIndex: number, slotStart: number) {
   const d = new Date(monday);
   d.setDate(monday.getDate() + dayIndex);
   d.setHours(Math.floor(slotStart / 60), slotStart % 60, 0, 0);
   const startAt = d.toISOString();
-  const endDate = new Date(d.getTime() + 30 * 60 * 1000);
+  const endDate = new Date(d.getTime() + 60 * 60 * 1000);
   const endAt = endDate.toISOString();
   return { startAt, endAt };
 }
@@ -173,9 +173,10 @@ export function WeekView({
       removeMutation.mutate(existing.dbId);
       return;
     }
-    // Only add if no static block occupies this slot
+    // Only add if the full 60-min window is free
+    const slotEnd = slotStart + 60;
     const occupied = blocks.find(
-      (b) => b.day === day && b.start <= slotStart && b.end > slotStart,
+      (b) => b.day === day && b.start < slotEnd && b.end > slotStart,
     );
     if (!occupied) {
       const { startAt, endAt } = blockToDateRange(monday, day, slotStart);

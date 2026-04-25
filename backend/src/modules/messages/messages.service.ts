@@ -266,6 +266,14 @@ export class MessagesService {
             draftResult.bookedSlotIso,
           );
         }
+        // If the agent acknowledged a parent note, append it to the next session
+        if (draftResult.sessionNote) {
+          await this.appendSessionNote(
+            message.coachId,
+            context.kids,
+            draftResult.sessionNote,
+          );
+        }
       } else {
         await this.outboundService.queueForApproval(outboundParams);
       }
@@ -327,6 +335,37 @@ export class MessagesService {
       this.logger.log({ event: 'SESSION_AUTO_BOOKED', coachId, kidId, scheduledAt });
     } catch (err) {
       this.logger.error({ event: 'CONFIRM_BOOKING_FAILED', err });
+    }
+  }
+
+  private async appendSessionNote(
+    coachId: string,
+    kids: { id: string; name: string }[],
+    note: string,
+  ): Promise<void> {
+    const kidIds = kids.map((k) => k.id);
+    if (!kidIds.length) return;
+    try {
+      const session = await this.prisma.session.findFirst({
+        where: {
+          coachId,
+          kidId: { in: kidIds },
+          status: { in: ['CONFIRMED', 'PROPOSED'] },
+          scheduledAt: { gte: new Date() },
+        },
+        orderBy: { scheduledAt: 'asc' },
+      });
+      if (!session) return;
+      const updated = session.coachNotes
+        ? `${session.coachNotes}\n${note}`
+        : note;
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { coachNotes: updated },
+      });
+      this.logger.log({ event: 'SESSION_NOTE_APPENDED', sessionId: session.id, note });
+    } catch (err) {
+      this.logger.error({ event: 'APPEND_SESSION_NOTE_FAILED', err });
     }
   }
 
