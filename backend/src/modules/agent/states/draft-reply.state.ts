@@ -61,7 +61,7 @@ export class DraftReplyState {
       systemPrompt: DRAFT_SYSTEM_PROMPT,
       userPrompt,
       model: DRAFTING_MODEL,
-      maxTokens: 200,
+      maxTokens: 350,
       temperature: 0.3,
     });
 

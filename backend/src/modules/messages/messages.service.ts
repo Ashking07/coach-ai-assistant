@@ -38,6 +38,7 @@ export class MessagesService {
       select: { id: true },
     });
 
+    const isWebChat = msg.channel === 'WEB_CHAT';
     const parent = await this.prisma.parent.upsert({
       where: { coachId_phone: { coachId: msg.coachId, phone: msg.fromPhone } },
       create: {
@@ -45,8 +46,9 @@ export class MessagesService {
         phone: msg.fromPhone,
         name: msg.fromName ?? `Unknown (${msg.fromPhone})`,
         preferredChannel: msg.channel === 'VOICE' ? 'SMS' : msg.channel,
+        isVerified: isWebChat,
       },
-      update: {},
+      update: isWebChat ? { isVerified: true } : {},
     });
 
     if (!parentAlreadyExists) {

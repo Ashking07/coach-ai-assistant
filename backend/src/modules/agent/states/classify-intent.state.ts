@@ -25,7 +25,7 @@ const ClassifiedIntentSchema = z.enum([
 const IntentClassificationSchema = z.object({
   intent: ClassifiedIntentSchema,
   confidence: z.number().min(0).max(1),
-  reasoning: z.string().max(280),
+  reasoning: z.string().transform((s) => s.slice(0, 500)),
 });
 
 type IntentClassification = z.infer<typeof IntentClassificationSchema>;

@@ -3,14 +3,18 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage, Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
+import IORedis from 'ioredis';
+import { getRedisUrl } from '../../bullmq.constants';
 import { PrismaService } from '../../prisma.service';
 import { MessagesService } from '../messages/messages.service';
 import { DemoTokenService } from './demo-token.service';
+import { WEB_CHAT_REPLY_CHANNEL } from './demo-chat.constants';
 
 @Injectable()
 export class DemoWebChatGateway implements OnModuleDestroy {
   private readonly logger = new Logger(DemoWebChatGateway.name);
   private wsServer: WebSocketServer | null = null;
+  private subscriber: IORedis | null = null;
   private readonly socketsByParent = new Map<string, Set<WebSocket>>();
 
   constructor(
@@ -61,6 +65,18 @@ export class DemoWebChatGateway implements OnModuleDestroy {
         this.registerConnection(payload.parentId, ws);
       });
     });
+
+    // Subscribe to replies published by the worker process
+    this.subscriber = new IORedis(getRedisUrl(), { maxRetriesPerRequest: null });
+    void this.subscriber.subscribe(WEB_CHAT_REPLY_CHANNEL);
+    this.subscriber.on('message', (_channel, raw) => {
+      try {
+        const { parentId, content } = JSON.parse(raw) as { parentId: string; content: string };
+        this.sendToParent(parentId, content);
+      } catch {
+        // malformed pub/sub message — ignore
+      }
+    });
   }
 
   sendToParent(parentId: string, content: string): boolean {
@@ -91,6 +107,8 @@ export class DemoWebChatGateway implements OnModuleDestroy {
     this.wsServer?.close();
     this.wsServer = null;
     this.socketsByParent.clear();
+    this.subscriber?.disconnect();
+    this.subscriber = null;
   }
 
   private registerConnection(parentId: string, ws: WebSocket): void {
