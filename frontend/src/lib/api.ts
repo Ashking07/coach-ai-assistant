@@ -80,6 +80,14 @@ export interface SettingsResponse {
   autonomyEnabled: boolean;
 }
 
+export interface WeekSession {
+  id: string;
+  kidName: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  paid: boolean;
+}
+
 export interface AvailabilitySlot {
   id: string;
   startAt: string;
@@ -135,6 +143,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ parentId }),
     }),
+  getWeekSessions: () => apiFetch<WeekSession[]>('/api/dashboard/sessions/week'),
   getAvailability: () => apiFetch<AvailabilitySlot[]>('/api/dashboard/availability'),
   addAvailability: (startAt: string, endAt: string) =>
     apiFetch<AvailabilitySlot>('/api/dashboard/availability', {

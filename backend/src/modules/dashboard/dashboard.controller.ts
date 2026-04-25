@@ -79,6 +79,11 @@ export class DashboardController {
     return this.dashboardService.dismissApproval(this.guard(token), id);
   }
 
+  @Get('sessions/week')
+  getWeekSessions(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.getWeekSessions(this.guard(token));
+  }
+
   @Get('availability')
   getAvailability(@Headers('x-dashboard-token') token: string | undefined) {
     return this.dashboardService.getAvailability(this.guard(token));

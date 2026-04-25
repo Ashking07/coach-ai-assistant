@@ -85,6 +85,7 @@ export class ClassifyIntentState {
             schema: IntentClassificationSchema,
             systemPrompt: INTENT_GUIDANCE,
             userPrompt: [
+              `Today's date: ${new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date())}`,
               `messageId: ${input.messageId}`,
               `parentKnown: ${input.parentKnown}`,
               `content: ${input.content}`,

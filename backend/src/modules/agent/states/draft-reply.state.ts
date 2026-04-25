@@ -46,7 +46,15 @@ export class DraftReplyState {
         ? 'Reply confidently and decisively.'
         : 'Reply warmly but tentatively — the coach will review before sending.';
 
+    const todayLabel = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(new Date());
+
     const userPrompt = [
+      `Today's date: ${todayLabel}`,
       `Parent name: ${input.context.parent.name}`,
       `Kids: ${input.context.kids.map((k) => k.name).join(', ')}`,
       `Intent: ${input.intent}`,

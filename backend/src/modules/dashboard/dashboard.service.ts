@@ -364,6 +364,32 @@ export class DashboardService {
     });
   }
 
+  async getWeekSessions(coachId: string) {
+    const now = new Date();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const sessions = await this.prisma.session.findMany({
+      where: {
+        coachId,
+        scheduledAt: { gte: monday, lt: weekEnd },
+        status: { in: ['CONFIRMED', 'PROPOSED'] },
+      },
+      include: { kid: { select: { name: true } } },
+      orderBy: { scheduledAt: 'asc' },
+    });
+
+    return sessions.map((s) => ({
+      id: s.id,
+      kidName: s.kid.name,
+      scheduledAt: s.scheduledAt.toISOString(),
+      durationMinutes: s.durationMinutes,
+      paid: s.paid,
+    }));
+  }
+
   async getAvailability(coachId: string) {
     const now = new Date();
     const monday = new Date(now);

@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { T } from '../tokens';
-import { api, type AvailabilitySlot, type DashboardSession } from '../lib/api';
+import { api, type AvailabilitySlot, type DashboardSession, type WeekSession } from '../lib/api';
 import { SessionCard } from './cards';
 
 const stone = '#8A857B';
@@ -22,19 +22,9 @@ type Block = {
   dbId?: string; // set for DB-backed available blocks
 };
 
-// Static demo blocks — booked/blocked only. Available slots come from the DB.
+// Static blocked-only blocks (personal calendar events, not sessions)
 const staticBlocks: Block[] = [
-  { day: 0, start: 9 * 60, end: 10 * 60, kind: 'booked', kid: 'Rhea T.' },
-  { day: 0, start: 10 * 60 + 15, end: 11 * 60, kind: 'booked', kid: 'Eli B.' },
-  { day: 0, start: 15 * 60 + 30, end: 17 * 60, kind: 'booked', kid: 'Kofi O.' },
-  { day: 1, start: 8 * 60, end: 9 * 60, kind: 'booked', kid: 'Mira L.' },
-  { day: 1, start: 17 * 60, end: 18 * 60, kind: 'booked', kid: 'Arjun S.' },
-  { day: 2, start: 9 * 60, end: 10 * 60, kind: 'booked', kid: 'Ayo N.' },
-  { day: 2, start: 17 * 60, end: 18 * 60, kind: 'booked', kid: 'Diego M.' },
   { day: 3, start: 18 * 60, end: 20 * 60, kind: 'blocked', reason: 'Family' },
-  { day: 4, start: 8 * 60, end: 9 * 60, kind: 'booked', kid: 'Seo K.' },
-  { day: 4, start: 17 * 60, end: 18 * 60, kind: 'booked', kid: 'Lina W.' },
-  { day: 5, start: 9 * 60, end: 10 * 60 + 30, kind: 'booked', kid: 'Noor H.' },
   { day: 6, start: 10 * 60, end: 14 * 60, kind: 'blocked', reason: 'Travel' },
 ];
 
@@ -67,6 +57,25 @@ function getDayDate(monday: Date, dayIndex: number) {
   const d = new Date(monday);
   d.setDate(monday.getDate() + dayIndex);
   return d.getDate();
+}
+
+// Convert a DB WeekSession → Block
+function sessionToBlock(session: WeekSession, monday: Date): Block | null {
+  const start = new Date(session.scheduledAt);
+  const dayClean = new Date(start);
+  dayClean.setHours(0, 0, 0, 0);
+  const mondayClean = new Date(monday);
+  mondayClean.setHours(0, 0, 0, 0);
+  const dayIndex = Math.round((dayClean.getTime() - mondayClean.getTime()) / 86400000);
+  if (dayIndex < 0 || dayIndex > 6) return null;
+  const startMin = start.getHours() * 60 + start.getMinutes();
+  return {
+    day: dayIndex,
+    start: startMin,
+    end: startMin + session.durationMinutes,
+    kind: 'booked',
+    kid: session.kidName,
+  };
 }
 
 // Convert a DB AvailabilitySlot → Block (day index + minutes from midnight)
@@ -114,6 +123,12 @@ export function WeekView({
   const { monday, dateRange } = getWeekInfo();
   const queryClient = useQueryClient();
 
+  const { data: dbSessions = [] } = useQuery({
+    queryKey: ['week-sessions'],
+    queryFn: api.getWeekSessions,
+    staleTime: 30_000,
+  });
+
   const { data: dbSlots = [] } = useQuery({
     queryKey: ['availability'],
     queryFn: api.getAvailability,
@@ -131,11 +146,14 @@ export function WeekView({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
   });
 
-  // Merge static (booked/blocked) + DB (available) blocks
+  // Merge static blocked + real DB sessions + DB available slots
+  const sessionBlocks: Block[] = dbSessions
+    .map((s) => sessionToBlock(s, monday))
+    .filter((b): b is Block => b !== null);
   const availableBlocks: Block[] = dbSlots
     .map((s) => slotToBlock(s, monday))
     .filter((b): b is Block => b !== null);
-  const blocks = [...staticBlocks, ...availableBlocks];
+  const blocks = [...staticBlocks, ...sessionBlocks, ...availableBlocks];
 
   const toggle = (day: number, slotStart: number) => {
     const existing = availableBlocks.find(
