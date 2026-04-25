@@ -14,12 +14,16 @@ export type DraftReplyInput = {
 
 export type DraftReplyResult = {
   draft: string;
+  bookedSlotIso: string | null;
   usage: LlmUsage;
   model: string;
   latencyMs: number;
 };
 
-const DraftReplySchema = z.object({ reply: z.string().transform((s) => s.slice(0, 500)) });
+const DraftReplySchema = z.object({
+  reply: z.string().transform((s) => s.slice(0, 500)),
+  booked_slot_iso: z.string().optional(),
+});
 
 const DRAFT_SYSTEM_PROMPT = `
 You are an SMS reply drafter for a solo sports coach.
@@ -29,6 +33,8 @@ Rules:
 - Never invent facts not provided to you.
 - Only reference session times that appear verbatim in the provided available slots list.
 - If no available slots are listed, do not invent times — offer to check with the coach instead.
+- When you confirm a booking for a specific slot, include its ISO datetime in the JSON as "booked_slot_iso".
+  Use the [iso: ...] value from the slot list exactly. Only set this field when you are confirming a booking.
 `.trim();
 
 @Injectable()
@@ -38,7 +44,9 @@ export class DraftReplyState {
   async draft(input: DraftReplyInput): Promise<DraftReplyResult> {
     const slotsText =
       input.context.availableSlots.length > 0
-        ? input.context.availableSlots.map((s) => `- ${s.label}`).join('\n')
+        ? input.context.availableSlots
+            .map((s) => `- ${s.label} [iso: ${s.startAt.toISOString()}]`)
+            .join('\n')
         : 'No available slots';
 
     const tierHint =
@@ -61,7 +69,7 @@ export class DraftReplyState {
       `Available slots:\n${slotsText}`,
       `Original message: ${input.message.content}`,
       tierHint,
-      'Respond with JSON: { "reply": "..." }',
+      'Respond with JSON: { "reply": "...", "booked_slot_iso": "ISO_DATETIME_OR_OMIT" }',
     ].join('\n');
 
     const result = await this.llm.classify(input.message.content, {
@@ -69,12 +77,13 @@ export class DraftReplyState {
       systemPrompt: DRAFT_SYSTEM_PROMPT,
       userPrompt,
       model: DRAFTING_MODEL,
-      maxTokens: 350,
+      maxTokens: 400,
       temperature: 0.3,
     });
 
     return {
       draft: result.parsed.reply,
+      bookedSlotIso: result.parsed.booked_slot_iso ?? null,
       usage: result.usage,
       model: result.model,
       latencyMs: result.latencyMs,

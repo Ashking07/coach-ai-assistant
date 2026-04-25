@@ -257,6 +257,15 @@ export class MessagesService {
     try {
       if (tier === ConfidenceTier.AUTO) {
         await this.outboundService.autoSend(outboundParams);
+        // If the agent confirmed a booking, create the session and consume the slot
+        if (classifyResult.intent === 'BOOK' && draftResult.bookedSlotIso) {
+          await this.confirmBooking(
+            message.coachId,
+            message.parentId,
+            context.kids,
+            draftResult.bookedSlotIso,
+          );
+        }
       } else {
         await this.outboundService.queueForApproval(outboundParams);
       }
@@ -272,6 +281,53 @@ export class MessagesService {
 
     await markProcessed();
     return true;
+  }
+
+  private async confirmBooking(
+    coachId: string,
+    parentId: string,
+    kids: { id: string; name: string }[],
+    bookedSlotIso: string,
+  ): Promise<void> {
+    const scheduledAt = new Date(bookedSlotIso);
+    if (isNaN(scheduledAt.getTime())) {
+      this.logger.warn({ event: 'CONFIRM_BOOKING_INVALID_ISO', bookedSlotIso });
+      return;
+    }
+
+    const kidId = kids[0]?.id;
+    if (!kidId) {
+      this.logger.warn({ event: 'CONFIRM_BOOKING_NO_KID', parentId });
+      return;
+    }
+
+    // Tolerate up to 2-minute drift when matching the availability slot
+    const slotWindowStart = new Date(scheduledAt.getTime() - 2 * 60 * 1000);
+    const slotWindowEnd = new Date(scheduledAt.getTime() + 2 * 60 * 1000);
+
+    try {
+      await this.prisma.$transaction([
+        this.prisma.session.create({
+          data: {
+            coachId,
+            kidId,
+            scheduledAt,
+            durationMinutes: 60,
+            status: 'CONFIRMED',
+          },
+        }),
+        this.prisma.availability.deleteMany({
+          where: {
+            coachId,
+            isBlocked: false,
+            startAt: { gte: slotWindowStart, lte: slotWindowEnd },
+          },
+        }),
+      ]);
+      this.logger.log({ event: 'SESSION_AUTO_BOOKED', coachId, kidId, scheduledAt });
+    } catch (err) {
+      this.logger.error({ event: 'CONFIRM_BOOKING_FAILED', err });
+    }
   }
 
   private formatError(error: unknown): string {

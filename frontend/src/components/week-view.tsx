@@ -126,13 +126,15 @@ export function WeekView({
   const { data: dbSessions = [] } = useQuery({
     queryKey: ['week-sessions'],
     queryFn: api.getWeekSessions,
-    staleTime: 30_000,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
   });
 
   const { data: dbSlots = [] } = useQuery({
     queryKey: ['availability'],
     queryFn: api.getAvailability,
-    staleTime: 30_000,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
   });
 
   const addMutation = useMutation({
@@ -150,9 +152,17 @@ export function WeekView({
   const sessionBlocks: Block[] = dbSessions
     .map((s) => sessionToBlock(s, monday))
     .filter((b): b is Block => b !== null);
+
+  // Remove available slots that overlap with any booked session
   const availableBlocks: Block[] = dbSlots
     .map((s) => slotToBlock(s, monday))
-    .filter((b): b is Block => b !== null);
+    .filter((b): b is Block => b !== null)
+    .filter((avail) =>
+      !sessionBlocks.some(
+        (sess) => sess.day === avail.day && sess.start < avail.end && sess.end > avail.start,
+      ),
+    );
+
   const blocks = [...staticBlocks, ...sessionBlocks, ...availableBlocks];
 
   const toggle = (day: number, slotStart: number) => {
