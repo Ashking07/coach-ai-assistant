@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -76,5 +77,29 @@ export class DashboardController {
     @Headers('x-dashboard-token') token: string | undefined,
   ) {
     return this.dashboardService.dismissApproval(this.guard(token), id);
+  }
+
+  @Get('availability')
+  getAvailability(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.getAvailability(this.guard(token));
+  }
+
+  @Post('availability')
+  addAvailability(
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: { startAt: string; endAt: string },
+  ) {
+    if (!body?.startAt || !body?.endAt) {
+      throw new BadRequestException('startAt and endAt are required');
+    }
+    return this.dashboardService.addAvailability(this.guard(token), body.startAt, body.endAt);
+  }
+
+  @Delete('availability/:id')
+  removeAvailability(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+  ) {
+    return this.dashboardService.removeAvailability(this.guard(token), id);
   }
 }

@@ -1,7 +1,8 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { T } from '../tokens';
-import type { DashboardSession } from '../lib/api';
+import { api, type AvailabilitySlot, type DashboardSession } from '../lib/api';
 import { SessionCard } from './cards';
 
 const stone = '#8A857B';
@@ -13,26 +14,25 @@ const HOUR_END = 21;
 
 type Block = {
   day: number;
-  start: number;
+  start: number; // minutes from midnight (local time)
   end: number;
   kind: 'booked' | 'available' | 'blocked';
   kid?: string;
   reason?: string;
+  dbId?: string; // set for DB-backed available blocks
 };
 
-const seed: Block[] = [
+// Static demo blocks — booked/blocked only. Available slots come from the DB.
+const staticBlocks: Block[] = [
   { day: 0, start: 9 * 60, end: 10 * 60, kind: 'booked', kid: 'Rhea T.' },
   { day: 0, start: 10 * 60 + 15, end: 11 * 60, kind: 'booked', kid: 'Eli B.' },
   { day: 0, start: 15 * 60 + 30, end: 17 * 60, kind: 'booked', kid: 'Kofi O.' },
   { day: 1, start: 8 * 60, end: 9 * 60, kind: 'booked', kid: 'Mira L.' },
-  { day: 1, start: 14 * 60, end: 16 * 60, kind: 'available' },
   { day: 1, start: 17 * 60, end: 18 * 60, kind: 'booked', kid: 'Arjun S.' },
   { day: 2, start: 9 * 60, end: 10 * 60, kind: 'booked', kid: 'Ayo N.' },
   { day: 2, start: 17 * 60, end: 18 * 60, kind: 'booked', kid: 'Diego M.' },
-  { day: 3, start: 15 * 60, end: 17 * 60, kind: 'available' },
   { day: 3, start: 18 * 60, end: 20 * 60, kind: 'blocked', reason: 'Family' },
   { day: 4, start: 8 * 60, end: 9 * 60, kind: 'booked', kid: 'Seo K.' },
-  { day: 4, start: 12 * 60, end: 15 * 60, kind: 'available' },
   { day: 4, start: 17 * 60, end: 18 * 60, kind: 'booked', kid: 'Lina W.' },
   { day: 5, start: 9 * 60, end: 10 * 60 + 30, kind: 'booked', kid: 'Noor H.' },
   { day: 6, start: 10 * 60, end: 14 * 60, kind: 'blocked', reason: 'Travel' },
@@ -56,6 +56,7 @@ function getWeekInfo() {
   const dow = now.getDay();
   const monday = new Date(now);
   monday.setDate(now.getDate() - ((dow + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -68,6 +69,37 @@ function getDayDate(monday: Date, dayIndex: number) {
   return d.getDate();
 }
 
+// Convert a DB AvailabilitySlot → Block (day index + minutes from midnight)
+function slotToBlock(slot: AvailabilitySlot, monday: Date): Block | null {
+  const start = new Date(slot.startAt);
+  const end = new Date(slot.endAt);
+  const slotDay = new Date(start);
+  slotDay.setHours(0, 0, 0, 0);
+  const mondayClean = new Date(monday);
+  mondayClean.setHours(0, 0, 0, 0);
+  const dayIndex = Math.round((slotDay.getTime() - mondayClean.getTime()) / 86400000);
+  if (dayIndex < 0 || dayIndex > 6) return null;
+  return {
+    day: dayIndex,
+    start: start.getHours() * 60 + start.getMinutes(),
+    end: end.getHours() * 60 + end.getMinutes(),
+    kind: slot.isBlocked ? 'blocked' : 'available',
+    reason: slot.reason || undefined,
+    dbId: slot.id,
+  };
+}
+
+// Convert a day index + slot-start-minutes → ISO datetime strings for the API
+function blockToDateRange(monday: Date, dayIndex: number, slotStart: number) {
+  const d = new Date(monday);
+  d.setDate(monday.getDate() + dayIndex);
+  d.setHours(Math.floor(slotStart / 60), slotStart % 60, 0, 0);
+  const startAt = d.toISOString();
+  const endDate = new Date(d.getTime() + 30 * 60 * 1000);
+  const endAt = endDate.toISOString();
+  return { startAt, endAt };
+}
+
 export function WeekView({
   today,
   sessions = [],
@@ -78,19 +110,48 @@ export function WeekView({
   onOpenSession?: (id: string) => void;
 }) {
   const todayIndex = today ?? ((new Date().getDay() + 6) % 7);
-  const [blocks, setBlocks] = useState<Block[]>(seed);
   const [openDay, setOpenDay] = useState<number | null>(null);
   const { monday, dateRange } = getWeekInfo();
+  const queryClient = useQueryClient();
+
+  const { data: dbSlots = [] } = useQuery({
+    queryKey: ['availability'],
+    queryFn: api.getAvailability,
+    staleTime: 30_000,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: ({ startAt, endAt }: { startAt: string; endAt: string }) =>
+      api.addAvailability(startAt, endAt),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => api.removeAvailability(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
+  });
+
+  // Merge static (booked/blocked) + DB (available) blocks
+  const availableBlocks: Block[] = dbSlots
+    .map((s) => slotToBlock(s, monday))
+    .filter((b): b is Block => b !== null);
+  const blocks = [...staticBlocks, ...availableBlocks];
 
   const toggle = (day: number, slotStart: number) => {
-    const slotEnd = slotStart + 30;
-    const existing = blocks.find(
-      (b) => b.day === day && b.start <= slotStart && b.end >= slotEnd && b.kind === 'available',
+    const existing = availableBlocks.find(
+      (b) => b.day === day && b.start <= slotStart && b.end > slotStart,
     );
-    if (existing) {
-      setBlocks((bs) => bs.filter((b) => b !== existing));
-    } else if (!blocks.find((b) => b.day === day && b.start <= slotStart && b.end > slotStart)) {
-      setBlocks((bs) => [...bs, { day, start: slotStart, end: slotEnd, kind: 'available' }]);
+    if (existing?.dbId) {
+      removeMutation.mutate(existing.dbId);
+      return;
+    }
+    // Only add if no static block occupies this slot
+    const occupied = blocks.find(
+      (b) => b.day === day && b.start <= slotStart && b.end > slotStart,
+    );
+    if (!occupied) {
+      const { startAt, endAt } = blockToDateRange(monday, day, slotStart);
+      addMutation.mutate({ startAt, endAt });
     }
   };
 
@@ -110,14 +171,7 @@ export function WeekView({
           >
             This week.
           </h2>
-          <div
-            style={{
-              fontFamily: 'Geist Mono, monospace',
-              fontSize: 12,
-              color: 'var(--muted)',
-              marginTop: 4,
-            }}
-          >
+          <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
             {dateRange}
           </div>
         </div>
@@ -177,34 +231,17 @@ export function WeekView({
                   style={{ borderBottom: '1px solid var(--hairline)', background: 'none', cursor: 'pointer' }}
                 >
                   <div className="flex items-baseline gap-3 flex-wrap">
-                    <span
-                      style={{
-                        fontFamily: 'Geist Mono, monospace',
-                        fontSize: 10,
-                        letterSpacing: '0.14em',
-                        color: T.sunrise,
-                      }}
-                    >
+                    <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.14em', color: T.sunrise }}>
                       TODAY · {DAY_SHORT[i].toUpperCase()} {dateNum}
                     </span>
-                    <span
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: 20,
-                        color: 'var(--text)',
-                        fontWeight: 500,
-                      }}
-                    >
+                    <span style={{ fontFamily: 'Fraunces, serif', fontSize: 20, color: 'var(--text)', fontWeight: 500 }}>
                       {name}
                     </span>
                   </div>
                   <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>
                     {sessions.length} sessions
                     {availH > 0 && (
-                      <>
-                        {' · '}
-                        <span style={{ color: T.moss }}>{availH}h free</span>
-                      </>
+                      <>{' · '}<span style={{ color: T.moss }}>{availH}h free</span></>
                     )}
                   </span>
                 </button>
@@ -235,27 +272,10 @@ export function WeekView({
                 className="flex flex-col items-center justify-center px-4 py-3 shrink-0"
                 style={{ width: 72, borderRight: '1px solid var(--hairline)' }}
               >
-                <span
-                  style={{
-                    fontFamily: 'Geist Mono, monospace',
-                    fontSize: 10,
-                    letterSpacing: '0.12em',
-                    color: 'var(--muted)',
-                    textTransform: 'uppercase',
-                  }}
-                >
+                <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.12em', color: 'var(--muted)', textTransform: 'uppercase' }}>
                   {DAY_SHORT[i]}
                 </span>
-                <span
-                  style={{
-                    fontFamily: 'Fraunces, serif',
-                    fontSize: 26,
-                    fontWeight: 500,
-                    color: 'var(--text)',
-                    lineHeight: 1.1,
-                    marginTop: 2,
-                  }}
-                >
+                <span style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 500, color: 'var(--text)', lineHeight: 1.1, marginTop: 2 }}>
                   {dateNum}
                 </span>
               </div>
@@ -280,22 +300,20 @@ export function WeekView({
                           {b.kid}
                         </span>
                       ))}
-                      {dayItems
-                        .filter((b) => b.kind === 'blocked')
-                        .map((b, k) => (
-                          <span
-                            key={'blk' + k}
-                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"
-                            style={{
-                              border: `1px solid ${stone}55`,
-                              color: stone,
-                              fontSize: 12,
-                              backgroundImage: `repeating-linear-gradient(45deg, ${stone}15 0 4px, transparent 4px 8px)`,
-                            }}
-                          >
-                            {fmtTime(b.start)} · {b.reason}
-                          </span>
-                        ))}
+                      {dayItems.filter((b) => b.kind === 'blocked').map((b, k) => (
+                        <span
+                          key={'blk' + k}
+                          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"
+                          style={{
+                            border: `1px solid ${stone}55`,
+                            color: stone,
+                            fontSize: 12,
+                            backgroundImage: `repeating-linear-gradient(45deg, ${stone}15 0 4px, transparent 4px 8px)`,
+                          }}
+                        >
+                          {fmtTime(b.start)} · {b.reason}
+                        </span>
+                      ))}
                     </div>
                     {availH > 0 && (
                       <div className="flex items-center gap-1.5">
@@ -311,13 +329,7 @@ export function WeekView({
 
               <div
                 className="flex flex-col items-end justify-center pr-4 shrink-0"
-                style={{
-                  fontFamily: 'Geist Mono, monospace',
-                  fontSize: 11,
-                  color: 'var(--muted)',
-                  minWidth: 60,
-                  textAlign: 'right',
-                }}
+                style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: 'var(--muted)', minWidth: 60, textAlign: 'right' }}
               >
                 <span style={{ color: bookedBlocks.length ? 'var(--text)' : 'var(--muted)' }}>
                   {bookedBlocks.length} {bookedBlocks.length === 1 ? 'session' : 'sessions'}
@@ -369,38 +381,17 @@ function DayDetailSheet({
       <div
         onClick={(e) => e.stopPropagation()}
         className="relative w-full md:max-w-[460px] rounded-t-3xl md:rounded-3xl overflow-hidden flex flex-col"
-        style={{
-          background: 'var(--bg)',
-          border: '1px solid var(--hairline)',
-          maxHeight: '88dvh',
-        }}
+        style={{ background: 'var(--bg)', border: '1px solid var(--hairline)', maxHeight: '88dvh' }}
       >
         <div
           className="flex items-center justify-between px-5 py-4"
-          style={{
-            background: 'var(--panel-solid)',
-            borderBottom: '1px solid var(--hairline)',
-          }}
+          style={{ background: 'var(--panel-solid)', borderBottom: '1px solid var(--hairline)' }}
         >
           <div>
-            <div
-              style={{
-                fontFamily: 'Fraunces, serif',
-                fontSize: 22,
-                color: 'var(--text)',
-                lineHeight: 1.1,
-              }}
-            >
+            <div style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: 'var(--text)', lineHeight: 1.1 }}>
               {DAY_NAMES[day]}
             </div>
-            <div
-              style={{
-                fontFamily: 'Geist Mono, monospace',
-                fontSize: 11,
-                color: 'var(--muted)',
-                marginTop: 2,
-              }}
-            >
+            <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
               {new Date().toLocaleDateString('en-US', { month: 'short' })} {dateNum} · tap empty slots to add availability
             </div>
           </div>
@@ -421,58 +412,37 @@ function DayDetailSheet({
               </span>
             );
             let bg = 'transparent';
-            let leftBar = '3px solid transparent';
+            let leftBorderColor = 'transparent';
 
             if (block?.kind === 'booked') {
               bg = T.sunrise + '18';
-              leftBar = `3px solid ${T.sunrise}`;
+              leftBorderColor = T.sunrise;
               content = (
                 <>
                   <span style={{ color: 'var(--text)', fontSize: 14 }}>{block.kid}</span>
-                  <span
-                    style={{
-                      fontFamily: 'Geist Mono, monospace',
-                      fontSize: 11,
-                      color: T.sunrise,
-                      marginLeft: 8,
-                    }}
-                  >
+                  <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: T.sunrise, marginLeft: 8 }}>
                     SESSION
                   </span>
                 </>
               );
             } else if (block?.kind === 'available') {
               bg = T.moss + '12';
-              leftBar = `3px solid ${T.moss}`;
+              leftBorderColor = T.moss;
               content = (
                 <>
                   <span style={{ color: T.moss, fontSize: 14 }}>Available</span>
-                  <span
-                    style={{
-                      fontFamily: 'Geist Mono, monospace',
-                      fontSize: 10,
-                      color: 'var(--muted)',
-                      marginLeft: 8,
-                    }}
-                  >
+                  <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, color: 'var(--muted)', marginLeft: 8 }}>
                     tap to remove
                   </span>
                 </>
               );
             } else if (block?.kind === 'blocked') {
               bg = stone + '14';
-              leftBar = `3px solid ${stone}`;
+              leftBorderColor = stone;
               content = (
                 <>
                   <span style={{ color: stone, fontSize: 14 }}>Blocked</span>
-                  <span
-                    style={{
-                      fontFamily: 'Geist Mono, monospace',
-                      fontSize: 11,
-                      color: 'var(--muted)',
-                      marginLeft: 8,
-                    }}
-                  >
+                  <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>
                     {block.reason}
                   </span>
                 </>
@@ -489,7 +459,7 @@ function DayDetailSheet({
                   height: 52,
                   background: bg,
                   borderTop: isHourStart ? '1px solid var(--hairline)' : 'none',
-                  borderLeft: leftBar,
+                  borderLeft: `3px solid ${leftBorderColor}`,
                   borderRight: 'none',
                   borderBottom: 'none',
                   cursor: clickable ? 'pointer' : 'default',

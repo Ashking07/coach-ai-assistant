@@ -363,4 +363,30 @@ export class DashboardService {
       },
     });
   }
+
+  async getAvailability(coachId: string) {
+    const now = new Date();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    return this.prisma.availability.findMany({
+      where: { coachId, startAt: { gte: monday, lt: weekEnd } },
+      orderBy: { startAt: 'asc' },
+      select: { id: true, startAt: true, endAt: true, isBlocked: true, reason: true },
+    });
+  }
+
+  async addAvailability(coachId: string, startAt: string, endAt: string) {
+    const row = await this.prisma.availability.create({
+      data: { coachId, startAt: new Date(startAt), endAt: new Date(endAt), isBlocked: false },
+      select: { id: true, startAt: true, endAt: true, isBlocked: true, reason: true },
+    });
+    return row;
+  }
+
+  async removeAvailability(coachId: string, id: string): Promise<void> {
+    await this.prisma.availability.deleteMany({ where: { id, coachId } });
+  }
 }

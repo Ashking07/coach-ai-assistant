@@ -80,6 +80,14 @@ export interface SettingsResponse {
   autonomyEnabled: boolean;
 }
 
+export interface AvailabilitySlot {
+  id: string;
+  startAt: string;
+  endAt: string;
+  isBlocked: boolean;
+  reason: string;
+}
+
 export interface ParentSessionResponse {
   token: string;
   expiresAt: string;
@@ -127,4 +135,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ parentId }),
     }),
+  getAvailability: () => apiFetch<AvailabilitySlot[]>('/api/dashboard/availability'),
+  addAvailability: (startAt: string, endAt: string) =>
+    apiFetch<AvailabilitySlot>('/api/dashboard/availability', {
+      method: 'POST',
+      body: JSON.stringify({ startAt, endAt }),
+    }),
+  removeAvailability: (id: string) =>
+    apiFetch<void>(`/api/dashboard/availability/${id}`, { method: 'DELETE' }),
 };
