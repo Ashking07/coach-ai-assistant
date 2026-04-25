@@ -19,7 +19,7 @@ export type DraftReplyResult = {
   latencyMs: number;
 };
 
-const DraftReplySchema = z.object({ reply: z.string().max(500) });
+const DraftReplySchema = z.object({ reply: z.string().transform((s) => s.slice(0, 500)) });
 
 const DRAFT_SYSTEM_PROMPT = `
 You are an SMS reply drafter for a solo sports coach.
