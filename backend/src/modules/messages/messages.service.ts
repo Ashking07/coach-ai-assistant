@@ -250,7 +250,7 @@ export class MessagesService {
       coachId: message.coachId,
       messageId: message.id,
       parentId: message.parentId,
-      channel: message.parent.preferredChannel,
+      channel: message.channel,
       classifyResult,
       draftResult,
     };
