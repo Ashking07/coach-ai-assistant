@@ -3,10 +3,11 @@ import { AlertTriangle, ChevronDown, MessageSquare, Sun, Moon, X } from 'lucide-
 import { useState } from 'react';
 import { api, type Approval, type Fire, type HomeResponse } from '../../lib/api';
 import { T } from '../../tokens';
-import { FireCard, ApprovalCard, SessionCard } from '../cards';
+import { FireCard, ApprovalCard } from '../cards';
 import { ApprovalDetail } from '../approval-detail';
 import { IntentBadge } from '../badges';
 import { DemoQRCard } from '../demo-qr-card';
+import { WeekView } from '../week-view';
 
 const REASON_TEXT: Record<string, string> = {
   ESCALATED: 'Policy exception detected — this message touched a topic the agent is not allowed to auto-answer on your behalf. Needs your voice.',
@@ -384,17 +385,8 @@ export function HomeScreen({
             <EmptyState label="Inbox is quiet. Nothing needs you right now." />
           ) : null}
 
-          {/* Sessions */}
-          {data.sessions.length > 0 && (
-            <>
-              <SectionLabel count={data.sessions.length}>Today.</SectionLabel>
-              <div className="px-4 md:px-8 flex gap-3 overflow-x-auto pb-2">
-                {data.sessions.map((s) => (
-                  <SessionCard key={s.id} session={s} onOpen={() => {}} />
-                ))}
-              </div>
-            </>
-          )}
+          {/* Week view */}
+          <WeekView sessions={data.sessions} />
 
           {/* Auto-handled */}
           <AutoHandledSection data={data.autoHandled} />
