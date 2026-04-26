@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DemoWebChatGateway } from './modules/demo-chat/web-chat.gateway';
+import { VoiceGateway } from './modules/voice/voice.gateway';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -20,7 +21,11 @@ async function bootstrap() {
   });
 
   const gateway = app.get(DemoWebChatGateway);
-  gateway.attachToHttpServer(app.getHttpServer());
+  const httpServer = app.getHttpServer() as import('node:http').Server;
+  gateway.attachToHttpServer(httpServer);
+
+  const voiceGateway = app.get(VoiceGateway);
+  voiceGateway.attachToHttpServer(httpServer);
 
   await app.listen(process.env.PORT ?? 3002);
 }

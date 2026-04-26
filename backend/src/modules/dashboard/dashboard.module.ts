@@ -8,5 +8,6 @@ import { DashboardService } from './dashboard.service';
   imports: [PrismaModule, ChannelSenderModule],
   controllers: [DashboardController],
   providers: [DashboardService],
+  exports: [DashboardService],
 })
 export class DashboardModule {}
