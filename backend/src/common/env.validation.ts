@@ -29,6 +29,8 @@ const EnvSchema = z.object({
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:3002'),
   DEMO_PARENT_CHAT_ENABLED: BoolFlagSchema,
   DEMO_TOKEN_SECRET: z.string().optional(),
+  VOICE_ENABLED: BoolFlagSchema,
+  GEMINI_API_KEY: z.string().min(1).optional(),
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
@@ -78,6 +80,16 @@ const EnvSchema = z.object({
         path: ['DEMO_TOKEN_SECRET'],
         message:
           'DEMO_TOKEN_SECRET must be set and at least 32 characters when DEMO_PARENT_CHAT_ENABLED is enabled',
+      });
+    }
+  }
+
+  if (env.VOICE_ENABLED) {
+    if (!env.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GEMINI_API_KEY'],
+        message: 'GEMINI_API_KEY is required when VOICE_ENABLED is true',
       });
     }
   }

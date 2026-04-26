@@ -74,3 +74,34 @@ describe('validateEnv', () => {
     ).toThrow(/TWILIO_WEBHOOK_VERIFY_DISABLED/);
   });
 });
+
+describe('voice config', () => {
+  const baseEnv = {
+    DATABASE_URL: 'postgresql://localhost:5433/coach_local',
+    ANTHROPIC_API_KEY: 'sk-ant-test',
+    INTERNAL_INGEST_TOKEN: '0123456789abcdef0123',
+    DASHBOARD_TOKEN: '0123456789abcdef0123',
+    COACH_ID: 'coach_1',
+  };
+
+  it('rejects VOICE_ENABLED=true without GEMINI_API_KEY', () => {
+    expect(() =>
+      validateEnv({ ...baseEnv, VOICE_ENABLED: 'true' }),
+    ).toThrow(/GEMINI_API_KEY/);
+  });
+
+  it('accepts VOICE_ENABLED=true with GEMINI_API_KEY', () => {
+    const env = validateEnv({
+      ...baseEnv,
+      VOICE_ENABLED: 'true',
+      GEMINI_API_KEY: 'AIza-test-key',
+    });
+    expect(env.VOICE_ENABLED).toBe(true);
+    expect(env.GEMINI_API_KEY).toBe('AIza-test-key');
+  });
+
+  it('defaults VOICE_ENABLED to false', () => {
+    const env = validateEnv(baseEnv);
+    expect(env.VOICE_ENABLED).toBe(false);
+  });
+});
