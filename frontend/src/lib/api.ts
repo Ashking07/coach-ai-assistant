@@ -102,6 +102,19 @@ export interface ParentSessionResponse {
   wsUrl: string;
 }
 
+export type VoiceProposal =
+  | { kind: 'APPROVE_PENDING'; approvalId: string; summary: string }
+  | { kind: 'DISMISS_PENDING'; approvalId: string; summary: string }
+  | { kind: 'DRAFT_REPLY'; parentName: string; messageBody: string; summary: string }
+  | { kind: 'BLOCK_AVAILABILITY'; startAtIso: string; endAtIso: string; summary: string }
+  | { kind: 'CANCEL_SESSION'; sessionId: string; summary: string };
+
+export interface StoredVoiceProposal {
+  id: string;
+  expiresAt: string;
+  proposal: VoiceProposal;
+}
+
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
 
 const apiUrl = (import.meta.env.VITE_API_URL as string) ?? 'http://localhost:3002';
@@ -152,4 +165,12 @@ export const api = {
     }),
   removeAvailability: (id: string) =>
     apiFetch<void>(`/api/dashboard/availability/${id}`, { method: 'DELETE' }),
+  cancelSession: (id: string) =>
+    apiFetch<void>(`/api/dashboard/sessions/${id}`, { method: 'DELETE' }),
+  voice: {
+    confirmProposal: (id: string) =>
+      apiFetch<{ ok: true }>(`/api/voice/proposals/${id}/confirm`, { method: 'POST' }),
+    cancelProposal: (id: string) =>
+      apiFetch<{ ok: true }>(`/api/voice/proposals/${id}/cancel`, { method: 'POST' }),
+  },
 };

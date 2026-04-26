@@ -8,6 +8,7 @@ import { ApprovalDetail } from '../approval-detail';
 import { IntentBadge } from '../badges';
 import { DemoQRCard } from '../demo-qr-card';
 import { WeekView } from '../week-view';
+import { VoiceButton } from '../voice/voice-button';
 
 const REASON_TEXT: Record<string, string> = {
   ESCALATED: 'Policy exception detected — this message touched a topic the agent is not allowed to auto-answer on your behalf. Needs your voice.',
@@ -320,13 +321,16 @@ export function HomeScreen({
             {data ? `${data.stats.firesCount} need you · ${data.stats.handledCount} handled overnight` : '—'}
           </div>
         </div>
-        <button
-          onClick={onToggleTheme}
-          className="p-2 rounded-full shrink-0"
-          style={{ border: '1px solid var(--hairline)', color: 'var(--muted)', background: 'none', cursor: 'pointer' }}
-        >
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <VoiceButton />
+          <button
+            onClick={onToggleTheme}
+            className="p-2 rounded-full shrink-0"
+            style={{ border: '1px solid var(--hairline)', color: 'var(--muted)', background: 'none', cursor: 'pointer' }}
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
       </div>
 
       {isLoading && <Skeleton />}
