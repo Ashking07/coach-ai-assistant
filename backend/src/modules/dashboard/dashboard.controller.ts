@@ -107,4 +107,12 @@ export class DashboardController {
   ) {
     return this.dashboardService.removeAvailability(this.guard(token), id);
   }
+
+  @Delete('sessions/:id')
+  cancelSession(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+  ) {
+    return this.dashboardService.cancelSession(this.guard(token), id);
+  }
 }

@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ApprovalStatus } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma.service';
+import { ChannelSenderRegistry } from '../agent/channels/channel-sender.registry';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +140,12 @@ function toAuditAction(
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(DashboardService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly channelSenderRegistry: ChannelSenderRegistry,
+  ) {}
 
   async getHome(coachId: string): Promise<HomeResponseDto> {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -364,6 +371,69 @@ export class DashboardService {
     });
   }
 
+  async cancelSession(coachId: string, sessionId: string): Promise<void> {
+    const session = await this.prisma.session.findFirst({
+      where: { id: sessionId, coachId },
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+
+    await this.prisma.session.update({
+      where: { id: sessionId },
+      data: { status: 'CANCELLED' },
+    });
+
+    this.logger.log({ event: 'SESSION_CANCELLED', coachId, sessionId });
+  }
+
+  async sendDraftedReply(
+    coachId: string,
+    body: { parentName: string; body: string },
+  ): Promise<void> {
+    const parent =
+      (await this.prisma.parent.findFirst({
+        where: { coachId, name: body.parentName },
+      })) ??
+      (await this.prisma.parent.findFirst({
+        where: {
+          coachId,
+          name: { contains: body.parentName, mode: 'insensitive' },
+        },
+      }));
+
+    if (!parent) {
+      throw new NotFoundException(`Parent '${body.parentName}' not found`);
+    }
+
+    const outboundId = randomUUID();
+    await this.prisma.message.create({
+      data: {
+        coachId,
+        parentId: parent.id,
+        direction: 'OUTBOUND',
+        channel: parent.preferredChannel,
+        providerMessageId: outboundId,
+        content: body.body,
+        receivedAt: new Date(),
+      },
+    });
+
+    const sender = this.channelSenderRegistry.get(parent.preferredChannel);
+    const result = await sender.send({
+      coachId,
+      messageId: outboundId,
+      parentId: parent.id,
+      content: body.body,
+    });
+
+    this.logger.log({
+      event: result.ok ? 'VOICE_DRAFT_REPLY_SENT' : 'VOICE_DRAFT_REPLY_FAILED',
+      parentId: parent.id,
+      error: result.ok ? undefined : result.error,
+    });
+  }
+
   async getWeekSessions(coachId: string) {
     const now = new Date();
     const monday = new Date(now);
@@ -409,7 +479,75 @@ export class DashboardService {
       data: { coachId, startAt: new Date(startAt), endAt: new Date(endAt), isBlocked: false },
       select: { id: true, startAt: true, endAt: true, isBlocked: true, reason: true },
     });
+
+    // Fire-and-forget broadcast — don't let send failures block the response
+    this.broadcastAvailabilityToParents(coachId, row.startAt, row.endAt).catch(
+      (err) => this.logger.error({ event: 'BROADCAST_AVAILABILITY_FAILED', err }),
+    );
+
     return row;
+  }
+
+  private async broadcastAvailabilityToParents(
+    coachId: string,
+    startAt: Date,
+    endAt: Date,
+  ): Promise<void> {
+    const [coach, parents] = await Promise.all([
+      this.prisma.coach.findUniqueOrThrow({ where: { id: coachId }, select: { name: true } }),
+      this.prisma.parent.findMany({
+        where: { coachId, isVerified: true },
+        select: { id: true, name: true, phone: true, preferredChannel: true },
+      }),
+    ]);
+
+    if (!parents.length) return;
+
+    const slotLabel = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(startAt);
+
+    for (const parent of parents) {
+      const firstName = parent.name.split(' ')[0];
+      const body =
+        `Hi ${firstName}! ${coach.name} just opened up a session slot: ${slotLabel}. ` +
+        `Reply "Book" to grab it, or just ask any questions!`;
+
+      try {
+        const sender = this.channelSenderRegistry.get(parent.preferredChannel);
+        const outboundId = randomUUID();
+        await this.prisma.message.create({
+          data: {
+            coachId,
+            parentId: parent.id,
+            direction: 'OUTBOUND',
+            channel: parent.preferredChannel,
+            providerMessageId: outboundId,
+            content: body,
+            receivedAt: new Date(),
+          },
+        });
+        const result = await sender.send({
+          coachId,
+          messageId: outboundId,
+          parentId: parent.id,
+          content: body,
+        });
+        this.logger.log({
+          event: result.ok ? 'AVAILABILITY_BROADCAST_SENT' : 'AVAILABILITY_BROADCAST_SEND_FAILED',
+          parentId: parent.id,
+          channel: parent.preferredChannel,
+          error: result.ok ? undefined : result.error,
+        });
+      } catch (err) {
+        this.logger.error({ event: 'AVAILABILITY_BROADCAST_ERROR', parentId: parent.id, err });
+      }
+    }
   }
 
   async removeAvailability(coachId: string, id: string): Promise<void> {

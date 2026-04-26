@@ -12,6 +12,7 @@ describe('CoachCommandService', () => {
       dismissApproval: jest.fn().mockResolvedValue(undefined),
       addAvailability: jest.fn().mockResolvedValue(undefined),
       cancelSession: jest.fn().mockResolvedValue(undefined),
+      sendDraftedReply: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<DashboardService>;
 
     const moduleRef = await Test.createTestingModule({
@@ -93,6 +94,20 @@ describe('CoachCommandService', () => {
     });
     await service.confirm(stored.id, 'coach_1');
     expect(dashboard.cancelSession).toHaveBeenCalledWith('coach_1', 'sess_5');
+  });
+
+  it('dispatches DRAFT_REPLY to dashboard.sendDraftedReply', async () => {
+    const stored = service.storeProposal('coach_1', {
+      kind: 'DRAFT_REPLY',
+      parentName: 'Priya',
+      messageBody: 'On my way',
+      summary: 'Reply to Priya',
+    });
+    await service.confirm(stored.id, 'coach_1');
+    expect(dashboard.sendDraftedReply).toHaveBeenCalledWith('coach_1', {
+      parentName: 'Priya',
+      body: 'On my way',
+    });
   });
 
   it('throws on confirm of unknown id', async () => {

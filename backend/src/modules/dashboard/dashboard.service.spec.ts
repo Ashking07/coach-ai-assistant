@@ -2,20 +2,31 @@ import { Test } from '@nestjs/testing';
 import { DashboardService } from './dashboard.service';
 import { PrismaService } from '../../prisma.service';
 import { ApprovalStatus } from '@prisma/client';
+import { ChannelSenderRegistry } from '../agent/channels/channel-sender.registry';
 
 function makePrismaMock() {
   return {
     agentDecision: { findMany: jest.fn(), count: jest.fn() },
     approvalQueue: { findMany: jest.fn(), update: jest.fn() },
-    session: { findMany: jest.fn() },
-    parent: { findMany: jest.fn() },
-    coach: { findUnique: jest.fn(), update: jest.fn() },
+    session: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    parent: { findMany: jest.fn(), findFirst: jest.fn() },
+    coach: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), update: jest.fn() },
+    availability: { findMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() },
+    message: { create: jest.fn() },
   };
 }
 
 async function makeService(prisma: ReturnType<typeof makePrismaMock>) {
+  const channelSenderRegistryMock = {
+    get: jest.fn().mockReturnValue({ send: jest.fn().mockResolvedValue({ ok: true }) }),
+  };
+
   const moduleRef = await Test.createTestingModule({
-    providers: [DashboardService, { provide: PrismaService, useValue: prisma }],
+    providers: [
+      DashboardService,
+      { provide: PrismaService, useValue: prisma },
+      { provide: ChannelSenderRegistry, useValue: channelSenderRegistryMock },
+    ],
   }).compile();
   return moduleRef.get(DashboardService);
 }
@@ -177,5 +188,51 @@ describe('DashboardService.getSettings', () => {
 
     expect(result.autonomyEnabled).toBe(true);
     expect(result.name).toBe('Robin Ade');
+  });
+});
+
+describe('DashboardService.cancelSession', () => {
+  it('marks the session CANCELLED', async () => {
+    const prisma = makePrismaMock();
+    prisma.session.findFirst.mockResolvedValue({ id: 'sess_test_1', coachId: 'coach_test' });
+    prisma.session.update.mockResolvedValue({});
+    const service = await makeService(prisma);
+
+    await service.cancelSession('coach_test', 'sess_test_1');
+
+    expect(prisma.session.update).toHaveBeenCalledWith({
+      where: { id: 'sess_test_1' },
+      data: { status: 'CANCELLED' },
+    });
+  });
+});
+
+describe('DashboardService.sendDraftedReply', () => {
+  it('writes an outbound Message and sends via the parent channel', async () => {
+    const prisma = makePrismaMock();
+    prisma.parent.findFirst
+      .mockResolvedValueOnce({
+        id: 'parent_1',
+        coachId: 'coach_test',
+        name: 'Priya',
+        preferredChannel: 'SMS',
+      })
+      .mockResolvedValueOnce(null);
+    prisma.message.create.mockResolvedValue({});
+    const service = await makeService(prisma);
+
+    await service.sendDraftedReply('coach_test', {
+      parentName: 'Priya',
+      body: 'On my way',
+    });
+
+    expect(prisma.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        coachId: 'coach_test',
+        parentId: 'parent_1',
+        direction: 'OUTBOUND',
+        content: 'On my way',
+      }),
+    });
   });
 });
