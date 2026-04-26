@@ -9,6 +9,7 @@ type ServerEvent =
   | { type: 'ready' }
   | { type: 'transcript'; text: string }
   | { type: 'proposal'; id: string; expiresAt: string; proposal: StoredVoiceProposal['proposal'] }
+  | { type: 'try_again'; message: string }
   | { type: 'error'; message: string };
 
 export interface VoiceSession {
@@ -39,8 +40,13 @@ export function useVoiceSession(): VoiceSession {
 
   const wsRef = useRef<WebSocket | null>(null);
   const captureRef = useRef<AudioCapture | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const teardown = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
     captureRef.current?.stop();
     captureRef.current = null;
     wsRef.current?.close();
@@ -64,7 +70,14 @@ export function useVoiceSession(): VoiceSession {
         if (msg.type === 'ready') setIsReady(true);
         else if (msg.type === 'transcript') setTranscript((t) => t + msg.text);
         else if (msg.type === 'proposal') {
+          if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+          }
           setProposal({ id: msg.id, expiresAt: msg.expiresAt, proposal: msg.proposal });
+          teardown();
+        } else if (msg.type === 'try_again') {
+          setError(msg.message);
           teardown();
         } else if (msg.type === 'error') setError(msg.message);
       } catch (err) {
@@ -91,7 +104,20 @@ export function useVoiceSession(): VoiceSession {
     setIsHolding(true);
   }, [teardown]);
 
-  const stopHold = useCallback(() => teardown(), [teardown]);
+  const stopHold = useCallback(() => {
+    captureRef.current?.stop();
+    captureRef.current = null;
+    setIsHolding(false);
+
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+    }
+
+    closeTimerRef.current = setTimeout(() => {
+      wsRef.current?.close();
+      closeTimerRef.current = null;
+    }, 1500);
+  }, []);
   const clearProposal = useCallback(() => setProposal(null), []);
 
   useEffect(() => () => teardown(), [teardown]);

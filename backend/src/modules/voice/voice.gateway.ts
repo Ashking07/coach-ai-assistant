@@ -78,6 +78,8 @@ export class VoiceGateway implements OnModuleDestroy {
       parents: parents.map((p) => ({ id: p.id, name: p.name })),
     });
 
+    let proposalSent = false;
+
     gemini.on('transcript', (text: string) => {
       ws.send(JSON.stringify({ type: 'transcript', text }));
     });
@@ -91,6 +93,7 @@ export class VoiceGateway implements OnModuleDestroy {
         }
 
         const stored = this.commands.storeProposal(coachId, proposal);
+        proposalSent = true;
         ws.send(
           JSON.stringify({
             type: 'proposal',
@@ -117,6 +120,17 @@ export class VoiceGateway implements OnModuleDestroy {
           message: err instanceof Error ? err.message : 'gemini error',
         }),
       );
+    });
+
+    gemini.on('close', () => {
+      if (!proposalSent && ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: 'try_again',
+            message: 'No command recognized. Try again.',
+          }),
+        );
+      }
     });
 
     try {
