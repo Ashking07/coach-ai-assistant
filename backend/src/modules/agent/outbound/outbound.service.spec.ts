@@ -2,6 +2,8 @@ import { Test } from '@nestjs/testing';
 import { OutboundService } from './outbound.service';
 import { PrismaService } from '../../../prisma.service';
 import { ConfidenceTier } from '@prisma/client';
+import { ChannelSenderRegistry } from '../channels/channel-sender.registry';
+import type { ChannelSender } from '../channels/channel-sender.port';
 
 function makePrisma() {
   return {
@@ -41,20 +43,31 @@ const BASE = {
 describe('OutboundService', () => {
   let service: OutboundService;
   let prisma: ReturnType<typeof makePrisma>;
+  let sender: ChannelSender;
+  let channelSenderRegistry: { get: jest.Mock };
 
   beforeEach(async () => {
     prisma = makePrisma();
+    sender = {
+      channel: 'WEB_CHAT',
+      send: jest.fn().mockResolvedValue({ ok: true }),
+    } as unknown as ChannelSender;
+    channelSenderRegistry = {
+      get: jest.fn().mockReturnValue(sender),
+    };
+
     const moduleRef = await Test.createTestingModule({
       providers: [
         OutboundService,
         { provide: PrismaService, useValue: prisma },
+        { provide: ChannelSenderRegistry, useValue: channelSenderRegistry },
       ],
     }).compile();
     service = moduleRef.get<OutboundService>(OutboundService);
   });
 
   describe('autoSend', () => {
-    it('writes OUTBOUND message then AUTO_SENT AgentDecision', async () => {
+    it('writes OUTBOUND message then AUTO_SENT AgentDecision and calls channel sender', async () => {
       await service.autoSend({
         ...BASE,
         classifyResult: CLASSIFY_RESULT,
@@ -82,6 +95,38 @@ describe('OutboundService', () => {
       expect(decisionArgs.data.tier).toBe(ConfidenceTier.AUTO);
       expect(decisionArgs.data.intent).toBe('BOOK');
       expect(decisionArgs.data.confidence).toBe(0.92);
+
+      expect(channelSenderRegistry.get).toHaveBeenCalledWith('WEB_CHAT');
+      expect(sender.send).toHaveBeenCalledWith({
+        coachId: 'coach-1',
+        messageId: 'msg-1',
+        parentId: 'parent-1',
+        content: DRAFT_RESULT.draft,
+      });
+    });
+
+    it('appends DELIVERY_FAILED when channel sender returns an error', async () => {
+      sender.send = jest.fn().mockResolvedValue({
+        ok: false,
+        error: 'provider unavailable',
+      });
+      channelSenderRegistry.get.mockReturnValue(sender);
+
+      await service.autoSend({
+        ...BASE,
+        classifyResult: CLASSIFY_RESULT,
+        draftResult: DRAFT_RESULT,
+      });
+
+      expect(prisma.agentDecision.create).toHaveBeenCalledTimes(2);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const failureDecisionArgs = prisma.agentDecision.create.mock.calls[1]?.[0] as {
+        data: { actionTaken: string; reasoning: string; tier: string };
+      };
+      expect(failureDecisionArgs.data.actionTaken).toBe('DELIVERY_FAILED');
+      expect(failureDecisionArgs.data.reasoning).toBe('provider unavailable');
+      expect(failureDecisionArgs.data.tier).toBe(ConfidenceTier.AUTO);
     });
   });
 

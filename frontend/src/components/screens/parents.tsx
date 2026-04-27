@@ -64,6 +64,18 @@ export function ParentsScreen() {
       )}
 
       <div className="md:px-8">
+        {filtered.length === 0 && !isLoading && (
+          <div className="px-4 md:px-4 mt-8">
+            <div
+              className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center"
+              style={{ background: 'var(--panel)', border: '1px solid var(--hairline)' }}
+            >
+              <span style={{ color: 'var(--muted)', fontSize: 14 }}>
+                {data?.length === 0 ? 'No parents yet. Share your demo link to get started.' : 'No matches found.'}
+              </span>
+            </div>
+          </div>
+        )}
         {filtered.map((p) => (
           <div
             key={p.id}

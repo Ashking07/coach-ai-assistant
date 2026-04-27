@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -76,5 +77,65 @@ export class DashboardController {
     @Headers('x-dashboard-token') token: string | undefined,
   ) {
     return this.dashboardService.dismissApproval(this.guard(token), id);
+  }
+
+  @Get('sessions/week')
+  getWeekSessions(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.getWeekSessions(this.guard(token));
+  }
+
+  @Get('availability')
+  getAvailability(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.getAvailability(this.guard(token));
+  }
+
+  @Post('availability')
+  addAvailability(
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: { startAt: string; endAt: string },
+  ) {
+    if (!body?.startAt || !body?.endAt) {
+      throw new BadRequestException('startAt and endAt are required');
+    }
+    return this.dashboardService.addAvailability(this.guard(token), body.startAt, body.endAt);
+  }
+
+  @Delete('availability/:id')
+  removeAvailability(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+  ) {
+    return this.dashboardService.removeAvailability(this.guard(token), id);
+  }
+
+  @Delete('sessions/:id')
+  cancelSession(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+  ) {
+    return this.dashboardService.cancelSession(this.guard(token), id);
+  }
+
+  @Post('sessions/:id/recap')
+  createSessionRecap(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const parsed = body as Record<string, unknown>;
+    if (!parsed || typeof parsed.transcript !== 'string') {
+      throw new BadRequestException('transcript is required and must be a string');
+    }
+    return this.dashboardService.createSessionRecap(this.guard(token), id, parsed.transcript);
+  }
+
+  @Post('kill-switch')
+  pauseAgent(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.pauseAgent(this.guard(token));
+  }
+
+  @Delete('kill-switch')
+  resumeAgent(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.resumeAgent(this.guard(token));
   }
 }

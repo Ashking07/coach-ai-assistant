@@ -7,6 +7,9 @@ import { PrismaModule } from './prisma.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { TwilioModule } from './modules/twilio/twilio.module';
+import { DemoChatModule } from './modules/demo-chat/demo-chat.module';
+import { VoiceModule } from './modules/voice/voice.module';
 import { validateEnv } from './common/env.validation';
 
 @Module({
@@ -20,6 +23,9 @@ import { validateEnv } from './common/env.validation';
     AgentModule,
     MessagesModule,
     DashboardModule,
+    TwilioModule,
+    DemoChatModule,
+    VoiceModule,
   ],
   controllers: [AppController],
   providers: [

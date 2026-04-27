@@ -38,6 +38,7 @@ export class MessagesService {
       select: { id: true },
     });
 
+    const isWebChat = msg.channel === 'WEB_CHAT';
     const parent = await this.prisma.parent.upsert({
       where: { coachId_phone: { coachId: msg.coachId, phone: msg.fromPhone } },
       create: {
@@ -45,8 +46,9 @@ export class MessagesService {
         phone: msg.fromPhone,
         name: msg.fromName ?? `Unknown (${msg.fromPhone})`,
         preferredChannel: msg.channel === 'VOICE' ? 'SMS' : msg.channel,
+        isVerified: isWebChat,
       },
-      update: {},
+      update: isWebChat ? { isVerified: true } : {},
     });
 
     if (!parentAlreadyExists) {
@@ -157,6 +159,26 @@ export class MessagesService {
         data: { processedAt: new Date() },
       });
 
+    // Check if agent is paused
+    const coach = await this.prisma.coach.findUniqueOrThrow({
+      where: { id: message.coachId },
+      select: { agentPaused: true },
+    });
+
+    if (coach.agentPaused) {
+      await this.prisma.agentDecision.create({
+        data: {
+          coachId: message.coachId,
+          messageId: message.id,
+          intent: 'AMBIGUOUS',
+          actionTaken: 'SKIPPED_AGENT_PAUSED',
+        },
+      });
+      await markProcessed();
+      this.logger.log({ event: 'AGENT_PAUSED_SKIPPED', messageId, coachId: message.coachId });
+      return true;
+    }
+
     // Stage 1: classify
     let classifyResult: Awaited<
       ReturnType<ClassifyIntentState['classifyIntent']>
@@ -248,13 +270,31 @@ export class MessagesService {
       coachId: message.coachId,
       messageId: message.id,
       parentId: message.parentId,
-      channel: message.parent.preferredChannel,
+      channel: message.channel,
       classifyResult,
       draftResult,
     };
+    // Capture parent notes onto the next upcoming session regardless of send tier
+    if (draftResult.sessionNote) {
+      await this.appendSessionNote(
+        message.coachId,
+        context.kids,
+        draftResult.sessionNote,
+      );
+    }
+
     try {
       if (tier === ConfidenceTier.AUTO) {
         await this.outboundService.autoSend(outboundParams);
+        // If the agent confirmed a booking, create the session and consume the slot
+        if (classifyResult.intent === 'BOOK' && draftResult.bookedSlotIso) {
+          await this.confirmBooking(
+            message.coachId,
+            message.parentId,
+            context.kids,
+            draftResult.bookedSlotIso,
+          );
+        }
       } else {
         await this.outboundService.queueForApproval(outboundParams);
       }
@@ -270,6 +310,84 @@ export class MessagesService {
 
     await markProcessed();
     return true;
+  }
+
+  private async confirmBooking(
+    coachId: string,
+    parentId: string,
+    kids: { id: string; name: string }[],
+    bookedSlotIso: string,
+  ): Promise<void> {
+    const scheduledAt = new Date(bookedSlotIso);
+    if (isNaN(scheduledAt.getTime())) {
+      this.logger.warn({ event: 'CONFIRM_BOOKING_INVALID_ISO', bookedSlotIso });
+      return;
+    }
+
+    const kidId = kids[0]?.id;
+    if (!kidId) {
+      this.logger.warn({ event: 'CONFIRM_BOOKING_NO_KID', parentId });
+      return;
+    }
+
+    // Tolerate up to 2-minute drift when matching the availability slot
+    const slotWindowStart = new Date(scheduledAt.getTime() - 2 * 60 * 1000);
+    const slotWindowEnd = new Date(scheduledAt.getTime() + 2 * 60 * 1000);
+
+    try {
+      await this.prisma.$transaction([
+        this.prisma.session.create({
+          data: {
+            coachId,
+            kidId,
+            scheduledAt,
+            durationMinutes: 60,
+            status: 'CONFIRMED',
+          },
+        }),
+        this.prisma.availability.deleteMany({
+          where: {
+            coachId,
+            isBlocked: false,
+            startAt: { gte: slotWindowStart, lte: slotWindowEnd },
+          },
+        }),
+      ]);
+      this.logger.log({ event: 'SESSION_AUTO_BOOKED', coachId, kidId, scheduledAt });
+    } catch (err) {
+      this.logger.error({ event: 'CONFIRM_BOOKING_FAILED', err });
+    }
+  }
+
+  private async appendSessionNote(
+    coachId: string,
+    kids: { id: string; name: string }[],
+    note: string,
+  ): Promise<void> {
+    const kidIds = kids.map((k) => k.id);
+    if (!kidIds.length) return;
+    try {
+      const session = await this.prisma.session.findFirst({
+        where: {
+          coachId,
+          kidId: { in: kidIds },
+          status: { in: ['CONFIRMED', 'PROPOSED'] },
+          scheduledAt: { gte: new Date() },
+        },
+        orderBy: { scheduledAt: 'asc' },
+      });
+      if (!session) return;
+      const updated = session.coachNotes
+        ? `${session.coachNotes}\n${note}`
+        : note;
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { coachNotes: updated },
+      });
+      this.logger.log({ event: 'SESSION_NOTE_APPENDED', sessionId: session.id, note });
+    } catch (err) {
+      this.logger.error({ event: 'APPEND_SESSION_NOTE_FAILED', err });
+    }
   }
 
   private formatError(error: unknown): string {

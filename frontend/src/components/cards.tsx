@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Mic } from 'lucide-react';
 import { T } from '../tokens';
 import { IntentBadge, TierBadge } from './badges';
 import { KidAvatar } from './avatar';
@@ -155,28 +155,82 @@ export function ApprovalCard({
 
 // ─── SessionCard ──────────────────────────────────────────────────────────────
 
+import { useEffect, useState } from 'react';
+import { useRecapRecorder } from '../lib/voice/use-recap-recorder';
+import { RecapRecorderOverlay } from './recap/recap-recorder-overlay';
+
 export function SessionCard({ session, onOpen }: { session: DashboardSession; onOpen: () => void }) {
+  const recap = useRecapRecorder(session.id);
+  const [showOverlay, setShowOverlay] = useState(false);
+
+  const handleMicClick = () => {
+    setShowOverlay(true);
+    recap.startRecording();
+  };
+
+  const handleOverlayClose = () => {
+    if (recap.state !== 'processing') {
+      setShowOverlay(false);
+    }
+  };
+
+  useEffect(() => {
+    if (recap.state === 'done') {
+      const t = setTimeout(() => setShowOverlay(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [recap.state]);
+
   return (
-    <div
-      onClick={onOpen}
-      className="shrink-0 rounded-2xl p-4 cursor-pointer flex flex-col gap-2"
-      style={{ background: 'var(--panel)', border: '1px solid var(--hairline)', width: 220 }}
-    >
-      <div className="flex items-center justify-between">
-        <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 12, color: 'var(--muted)' }}>
-          {session.time} · {session.duration}
-        </span>
-        {!session.paid && (
-          <span style={{ fontSize: 10, fontFamily: 'Geist Mono, monospace', color: T.amber, letterSpacing: '0.08em' }}>
-            UNPAID
+    <>
+      <div
+        className="shrink-0 rounded-2xl p-4 flex flex-col gap-2"
+        style={{ background: 'var(--panel)', border: '1px solid var(--hairline)', width: 220 }}
+      >
+        <div className="flex items-center justify-between">
+          <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 12, color: 'var(--muted)' }}>
+            {session.time} · {session.duration}
           </span>
-        )}
+          {!session.paid && (
+            <span style={{ fontSize: 10, fontFamily: 'Geist Mono, monospace', color: T.amber, letterSpacing: '0.08em' }}>
+              UNPAID
+            </span>
+          )}
+        </div>
+        <div style={{ color: 'var(--text)', fontSize: 17, fontWeight: 500 }}>{session.kid}</div>
+        <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>{session.note || 'No notes'}</div>
+        <div className="flex items-center justify-between mt-2">
+          <div
+            className="flex items-center gap-1 cursor-pointer"
+            onClick={onOpen}
+            style={{ color: 'var(--muted)', fontSize: 12 }}
+          >
+            Open <ChevronRight size={14} />
+          </div>
+          <button
+            onClick={handleMicClick}
+            className="p-1.5 rounded-lg transition-colors"
+            style={{
+              background: 'transparent',
+              color: 'var(--muted)',
+              border: '1px solid transparent',
+              cursor: 'pointer',
+            }}
+            title="Record session recap"
+          >
+            <Mic size={16} />
+          </button>
+        </div>
       </div>
-      <div style={{ color: 'var(--text)', fontSize: 17, fontWeight: 500 }}>{session.kid}</div>
-      <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>{session.note || 'No notes'}</div>
-      <div className="flex items-center gap-1 mt-1" style={{ color: 'var(--muted)', fontSize: 12 }}>
-        Open <ChevronRight size={14} />
-      </div>
-    </div>
+      {showOverlay && (
+        <RecapRecorderOverlay
+          state={recap.state}
+          transcript={recap.transcript}
+          error={recap.error}
+          onStop={recap.stopRecording}
+          onClose={handleOverlayClose}
+        />
+      )}
+    </>
   );
 }

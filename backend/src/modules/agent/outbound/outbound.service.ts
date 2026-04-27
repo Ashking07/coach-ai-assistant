@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../prisma.service';
 import type { ClassifyIntentResult } from '../states/classify-intent.state';
 import type { DraftReplyResult } from '../states/draft-reply.state';
+import { ChannelSenderRegistry } from '../channels/channel-sender.registry';
 
 type SendBase = {
   coachId: string;
@@ -24,7 +25,10 @@ export type EscalateParams = {
 
 @Injectable()
 export class OutboundService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly channelSenderRegistry: ChannelSenderRegistry,
+  ) {}
 
   async autoSend(params: SendBase): Promise<void> {
     const { classifyResult, draftResult } = params;
@@ -56,6 +60,8 @@ export class OutboundService {
         latencyMs: Math.round(classifyResult.latencyMs + draftResult.latencyMs),
       },
     });
+
+    await this.sendViaChannelSender(params);
   }
 
   async queueForApproval(params: SendBase): Promise<void> {
@@ -102,6 +108,48 @@ export class OutboundService {
         tokensIn: cr?.usage.tokensIn ?? null,
         tokensOut: cr?.usage.tokensOut ?? null,
         latencyMs: cr ? Math.round(cr.latencyMs) : null,
+      },
+    });
+  }
+
+  private async sendViaChannelSender(params: SendBase): Promise<void> {
+    try {
+      const sender = this.channelSenderRegistry.get(params.channel);
+      const result = await sender.send({
+        coachId: params.coachId,
+        messageId: params.messageId,
+        parentId: params.parentId,
+        content: params.draftResult.draft,
+      });
+
+      if (!result.ok) {
+        await this.appendDeliveryFailureDecision(params, result.error);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown send error';
+      await this.appendDeliveryFailureDecision(params, reason);
+    }
+  }
+
+  private async appendDeliveryFailureDecision(
+    params: SendBase,
+    reason: string,
+  ): Promise<void> {
+    const { classifyResult, draftResult } = params;
+
+    await this.prisma.agentDecision.create({
+      data: {
+        coachId: params.coachId,
+        messageId: params.messageId,
+        intent: classifyResult.intent,
+        confidence: classifyResult.confidence,
+        tier: ConfidenceTier.AUTO,
+        actionTaken: 'DELIVERY_FAILED',
+        reasoning: reason,
+        llmModel: draftResult.model,
+        tokensIn: classifyResult.usage.tokensIn + draftResult.usage.tokensIn,
+        tokensOut: classifyResult.usage.tokensOut + draftResult.usage.tokensOut,
+        latencyMs: Math.round(classifyResult.latencyMs + draftResult.latencyMs),
       },
     });
   }

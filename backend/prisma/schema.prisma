@@ -58,6 +58,17 @@ enum ApprovalStatus {
   EXPIRED
 }
 
+enum ActionTaken {
+  AUTO_SENT
+  QUEUED_FOR_APPROVAL
+  ESCALATED
+  CLASSIFY_FAILED
+  DRAFT_FAILED
+  SEND_FAILED
+  DELIVERY_FAILED
+  SKIPPED_AGENT_PAUSED
+}
+
 model Coach {
   id               String   @id @default(cuid())
   name             String
@@ -65,6 +76,7 @@ model Coach {
   timezone         String   @default("America/Los_Angeles")
   stripeAccountId  String?
   autonomyEnabled  Boolean  @default(true)
+  agentPaused      Boolean  @default(false)
   createdAt        DateTime @default(now())
 
   parents          Parent[]
@@ -171,7 +183,7 @@ model AgentDecision {
   intent      Intent
   confidence  Float?
   tier        ConfidenceTier?
-  actionTaken String
+  actionTaken ActionTaken
   reasoning   String?
   llmModel    String?
   tokensIn    Int?

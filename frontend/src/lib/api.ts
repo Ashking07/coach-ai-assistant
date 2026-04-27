@@ -78,6 +78,44 @@ export interface SettingsResponse {
   timezone: string;
   stripeAccountId: string | null;
   autonomyEnabled: boolean;
+  agentPaused: boolean;
+}
+
+export interface WeekSession {
+  id: string;
+  kidName: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  paid: boolean;
+}
+
+export interface AvailabilitySlot {
+  id: string;
+  startAt: string;
+  endAt: string;
+  isBlocked: boolean;
+  reason: string;
+}
+
+export interface ParentSessionResponse {
+  token: string;
+  expiresAt: string;
+  wsUrl: string;
+}
+
+export type VoiceProposal =
+  | { kind: 'APPROVE_PENDING'; approvalId: string; summary: string }
+  | { kind: 'DISMISS_PENDING'; approvalId: string; summary: string }
+  | { kind: 'DRAFT_REPLY'; parentName: string; messageBody: string; summary: string }
+  | { kind: 'BLOCK_AVAILABILITY'; startAtIso: string; endAtIso: string; summary: string }
+  | { kind: 'CANCEL_SESSION'; sessionId: string; summary: string }
+  | { kind: 'SCHEDULE_SESSION'; kidId: string; kidName: string; startAtIso: string; summary: string }
+  | { kind: 'ADD_AVAILABILITY'; startAtIso: string; endAtIso: string; summary: string };
+
+export interface StoredVoiceProposal {
+  id: string;
+  expiresAt: string;
+  proposal: VoiceProposal;
 }
 
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
@@ -112,8 +150,39 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  pauseAgent: () =>
+    apiFetch<SettingsResponse>('/api/dashboard/kill-switch', { method: 'POST' }),
+  resumeAgent: () =>
+    apiFetch<SettingsResponse>('/api/dashboard/kill-switch', { method: 'DELETE' }),
   sendApproval: (id: string) =>
     apiFetch<void>(`/api/dashboard/approvals/${id}/send`, { method: 'POST' }),
   dismissApproval: (id: string) =>
     apiFetch<void>(`/api/dashboard/approvals/${id}/dismiss`, { method: 'POST' }),
+  createParentSession: (parentId: string) =>
+    apiFetch<ParentSessionResponse>('/api/demo/parent-session', {
+      method: 'POST',
+      body: JSON.stringify({ parentId }),
+    }),
+  getWeekSessions: () => apiFetch<WeekSession[]>('/api/dashboard/sessions/week'),
+  getAvailability: () => apiFetch<AvailabilitySlot[]>('/api/dashboard/availability'),
+  addAvailability: (startAt: string, endAt: string) =>
+    apiFetch<AvailabilitySlot>('/api/dashboard/availability', {
+      method: 'POST',
+      body: JSON.stringify({ startAt, endAt }),
+    }),
+  removeAvailability: (id: string) =>
+    apiFetch<void>(`/api/dashboard/availability/${id}`, { method: 'DELETE' }),
+  cancelSession: (id: string) =>
+    apiFetch<void>(`/api/dashboard/sessions/${id}`, { method: 'DELETE' }),
+  voice: {
+    confirmProposal: (id: string) =>
+      apiFetch<{ ok: true }>(`/api/voice/proposals/${id}/confirm`, { method: 'POST' }),
+    cancelProposal: (id: string) =>
+      apiFetch<{ ok: true }>(`/api/voice/proposals/${id}/cancel`, { method: 'POST' }),
+  },
+  recapSession: (sessionId: string, transcript: string) =>
+    apiFetch<{ approvalId: string }>(`/api/dashboard/sessions/${sessionId}/recap`, {
+      method: 'POST',
+      body: JSON.stringify({ transcript }),
+    }),
 };

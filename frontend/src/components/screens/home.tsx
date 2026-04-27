@@ -3,9 +3,12 @@ import { AlertTriangle, ChevronDown, MessageSquare, Sun, Moon, X } from 'lucide-
 import { useState } from 'react';
 import { api, type Approval, type Fire, type HomeResponse } from '../../lib/api';
 import { T } from '../../tokens';
-import { FireCard, ApprovalCard, SessionCard } from '../cards';
+import { FireCard, ApprovalCard } from '../cards';
 import { ApprovalDetail } from '../approval-detail';
 import { IntentBadge } from '../badges';
+import { DemoQRCard } from '../demo-qr-card';
+import { WeekView } from '../week-view';
+import { VoiceButton } from '../voice/voice-button';
 
 const REASON_TEXT: Record<string, string> = {
   ESCALATED: 'Policy exception detected — this message touched a topic the agent is not allowed to auto-answer on your behalf. Needs your voice.',
@@ -318,13 +321,16 @@ export function HomeScreen({
             {data ? `${data.stats.firesCount} need you · ${data.stats.handledCount} handled overnight` : '—'}
           </div>
         </div>
-        <button
-          onClick={onToggleTheme}
-          className="p-2 rounded-full shrink-0"
-          style={{ border: '1px solid var(--hairline)', color: 'var(--muted)', background: 'none', cursor: 'pointer' }}
-        >
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <VoiceButton />
+          <button
+            onClick={onToggleTheme}
+            className="p-2 rounded-full shrink-0"
+            style={{ border: '1px solid var(--hairline)', color: 'var(--muted)', background: 'none', cursor: 'pointer' }}
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
       </div>
 
       {isLoading && <Skeleton />}
@@ -380,25 +386,20 @@ export function HomeScreen({
               </div>
             </>
           ) : data.fires.length === 0 ? (
-            <EmptyState label="Inbox is quiet. Nothing needs you right now." />
+            <EmptyState label="All clear. Queue is empty." />
           ) : null}
 
-          {/* Sessions */}
-          {data.sessions.length > 0 && (
-            <>
-              <SectionLabel count={data.sessions.length}>Today.</SectionLabel>
-              <div className="px-4 md:px-8 flex gap-3 overflow-x-auto pb-2">
-                {data.sessions.map((s) => (
-                  <SessionCard key={s.id} session={s} onOpen={() => {}} />
-                ))}
-              </div>
-            </>
-          )}
+          {/* Week view */}
+          <WeekView sessions={data.sessions} />
 
           {/* Auto-handled */}
           <AutoHandledSection data={data.autoHandled} />
         </>
       )}
+
+      {/* Demo QR */}
+      <SectionLabel>Demo.</SectionLabel>
+      <DemoQRCard />
 
       {/* Approval detail overlay */}
       {activeFire && (
