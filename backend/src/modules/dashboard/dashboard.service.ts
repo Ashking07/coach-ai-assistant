@@ -602,7 +602,48 @@ export class DashboardService {
   }
 
   async removeAvailability(coachId: string, id: string): Promise<void> {
+    const slot = await this.prisma.availability.findFirst({
+      where: { id, coachId },
+      select: { startAt: true, endAt: true },
+    });
     await this.prisma.availability.deleteMany({ where: { id, coachId } });
+    if (slot) {
+      this.broadcastAvailabilityRemoved(coachId, slot.startAt).catch(
+        (err) => this.logger.error({ event: 'BROADCAST_REMOVAL_FAILED', err }),
+      );
+    }
+  }
+
+  private async broadcastAvailabilityRemoved(coachId: string, startAt: Date): Promise<void> {
+    const [coach, parents] = await Promise.all([
+      this.prisma.coach.findUniqueOrThrow({ where: { id: coachId }, select: { name: true } }),
+      this.prisma.parent.findMany({
+        where: { coachId, isVerified: true },
+        select: { id: true, name: true, preferredChannel: true },
+      }),
+    ]);
+    if (!parents.length) return;
+    const slotLabel = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    }).format(startAt);
+    for (const parent of parents) {
+      const body = `Hi ${parent.name.split(' ')[0]}! Just a heads-up — ${coach.name} has removed the slot on ${slotLabel}. Feel free to ask about other available times!`;
+      try {
+        const sender = this.channelSenderRegistry.get(parent.preferredChannel);
+        const outboundId = randomUUID();
+        await this.prisma.message.create({
+          data: {
+            coachId, parentId: parent.id, direction: 'OUTBOUND',
+            channel: parent.preferredChannel, providerMessageId: outboundId,
+            content: body, receivedAt: new Date(),
+          },
+        });
+        await sender.send({ coachId, messageId: outboundId, parentId: parent.id, content: body });
+      } catch (err) {
+        this.logger.error({ event: 'REMOVAL_BROADCAST_ERROR', parentId: parent.id, err });
+      }
+    }
   }
 
   async scheduleSession(coachId: string, kidId: string, startAtIso: string): Promise<void> {

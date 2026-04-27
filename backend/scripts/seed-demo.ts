@@ -68,7 +68,7 @@ async function main() {
 
   for (const f of families) {
     const parent = await prisma.parent.create({
-      data: { coachId: COACH_ID, name: f.name, phone: f.phone, isVerified: true },
+      data: { coachId: COACH_ID, name: f.name, phone: f.phone, isVerified: true, preferredChannel: 'WEB_CHAT' },
     });
     const kids = [];
     for (const k of f.kids) {
