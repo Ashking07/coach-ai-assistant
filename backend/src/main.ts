@@ -3,6 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DemoWebChatGateway } from './modules/demo-chat/web-chat.gateway';
 import { VoiceGateway } from './modules/voice/voice.gateway';
+import { MessagesService } from './modules/messages/messages.service';
+import { startWorker } from './worker';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -28,5 +30,11 @@ async function bootstrap() {
   voiceGateway.attachToHttpServer(httpServer);
 
   await app.listen(process.env.PORT ?? 3002);
+
+  // Run BullMQ worker in-process so we don't need a separate Render service
+  const messagesService = app.get(MessagesService);
+  const recovered = await messagesService.recoverOrphanedMessages();
+  if (recovered > 0) console.log(`Recovered ${recovered} orphaned messages on boot`);
+  startWorker(messagesService);
 }
 void bootstrap();
