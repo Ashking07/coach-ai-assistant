@@ -545,7 +545,7 @@ export class DashboardService {
     endAt: Date,
   ): Promise<void> {
     const [coach, parents] = await Promise.all([
-      this.prisma.coach.findUniqueOrThrow({ where: { id: coachId }, select: { name: true } }),
+      this.prisma.coach.findUniqueOrThrow({ where: { id: coachId }, select: { name: true, timezone: true } }),
       this.prisma.parent.findMany({
         where: { coachId, isVerified: true },
         select: { id: true, name: true, phone: true, preferredChannel: true },
@@ -561,6 +561,7 @@ export class DashboardService {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
+      timeZone: coach.timezone,
     }).format(startAt);
 
     for (const parent of parents) {
@@ -616,7 +617,7 @@ export class DashboardService {
 
   private async broadcastAvailabilityRemoved(coachId: string, startAt: Date): Promise<void> {
     const [coach, parents] = await Promise.all([
-      this.prisma.coach.findUniqueOrThrow({ where: { id: coachId }, select: { name: true } }),
+      this.prisma.coach.findUniqueOrThrow({ where: { id: coachId }, select: { name: true, timezone: true } }),
       this.prisma.parent.findMany({
         where: { coachId, isVerified: true },
         select: { id: true, name: true, preferredChannel: true },
@@ -626,6 +627,7 @@ export class DashboardService {
     const slotLabel = new Intl.DateTimeFormat('en-US', {
       weekday: 'short', month: 'short', day: 'numeric',
       hour: 'numeric', minute: '2-digit', hour12: true,
+      timeZone: coach.timezone,
     }).format(startAt);
     for (const parent of parents) {
       const body = `Hi ${parent.name.split(' ')[0]}! Just a heads-up — ${coach.name} has removed the slot on ${slotLabel}. Feel free to ask about other available times!`;
