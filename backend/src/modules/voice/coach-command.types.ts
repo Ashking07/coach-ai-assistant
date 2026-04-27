@@ -19,13 +19,26 @@ export const CoachCommandProposalSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('BLOCK_AVAILABILITY'),
-    startAtIso: z.string().datetime(),
-    endAtIso: z.string().datetime(),
+    startAtIso: z.iso.datetime({ offset: true }),
+    endAtIso: z.iso.datetime({ offset: true }),
     summary: z.string().max(280),
   }),
   z.object({
     kind: z.literal('CANCEL_SESSION'),
     sessionId: z.string().min(1),
+    summary: z.string().max(280),
+  }),
+  z.object({
+    kind: z.literal('SCHEDULE_SESSION'),
+    kidId: z.string().min(1),
+    kidName: z.string().min(1),
+    startAtIso: z.iso.datetime({ offset: true }),
+    summary: z.string().max(280),
+  }),
+  z.object({
+    kind: z.literal('ADD_AVAILABILITY'),
+    startAtIso: z.iso.datetime({ offset: true }),
+    endAtIso: z.iso.datetime({ offset: true }),
     summary: z.string().max(280),
   }),
 ]);
@@ -107,6 +120,35 @@ export const GEMINI_TOOL_DEFINITIONS = [
       required: ['sessionId', 'summary'],
     },
   },
+  {
+    name: 'schedule_session',
+    description:
+      'Book a new training session for a kid. Use when the coach says "schedule", "book", "add", or "put [kid name] on the calendar / on the schedule". Use the kidId from the dashboard context.',
+    parameters: {
+      type: 'object',
+      properties: {
+        kidId: { type: 'string', description: 'ID of the kid from dashboard context' },
+        kidName: { type: 'string', description: 'Display name of the kid' },
+        startAtIso: { type: 'string', description: 'ISO 8601 datetime for session start' },
+        summary: { type: 'string' },
+      },
+      required: ['kidId', 'kidName', 'startAtIso', 'summary'],
+    },
+  },
+  {
+    name: 'add_availability',
+    description:
+      'Mark a time window as available on the coach calendar. Use when the coach says "mark available", "open up", "add slot", "I\'m free", or "make [time] available". This is the opposite of blocking — it adds an open slot parents can book.',
+    parameters: {
+      type: 'object',
+      properties: {
+        startAtIso: { type: 'string' },
+        endAtIso: { type: 'string' },
+        summary: { type: 'string' },
+      },
+      required: ['startAtIso', 'endAtIso', 'summary'],
+    },
+  },
 ] as const;
 
 export type GeminiToolName = (typeof GEMINI_TOOL_DEFINITIONS)[number]['name'];
@@ -126,6 +168,10 @@ export function toolCallToProposal(
       return CoachCommandProposalSchema.parse({ kind: 'BLOCK_AVAILABILITY', ...args });
     case 'cancel_session':
       return CoachCommandProposalSchema.parse({ kind: 'CANCEL_SESSION', ...args });
+    case 'schedule_session':
+      return CoachCommandProposalSchema.parse({ kind: 'SCHEDULE_SESSION', ...args });
+    case 'add_availability':
+      return CoachCommandProposalSchema.parse({ kind: 'ADD_AVAILABILITY', ...args });
     default:
       return null;
   }

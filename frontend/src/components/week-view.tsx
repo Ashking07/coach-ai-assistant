@@ -133,19 +133,38 @@ export function WeekView({
   const { data: dbSlots = [] } = useQuery({
     queryKey: ['availability'],
     queryFn: api.getAvailability,
-    staleTime: 10_000,
-    refetchInterval: 30_000,
+    staleTime: 0,
+    refetchInterval: 15_000,
   });
 
   const addMutation = useMutation({
     mutationFn: ({ startAt, endAt }: { startAt: string; endAt: string }) =>
       api.addAvailability(startAt, endAt),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
+    onMutate: async ({ startAt, endAt }) => {
+      await queryClient.cancelQueries({ queryKey: ['availability'] });
+      const prev = queryClient.getQueryData<AvailabilitySlot[]>(['availability']) ?? [];
+      const optimistic: AvailabilitySlot = { id: `opt-${Date.now()}`, startAt, endAt, isBlocked: false, reason: '' };
+      queryClient.setQueryData(['availability'], [...prev, optimistic]);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['availability'], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
   });
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => api.removeAvailability(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['availability'] });
+      const prev = queryClient.getQueryData<AvailabilitySlot[]>(['availability']) ?? [];
+      queryClient.setQueryData(['availability'], prev.filter((s) => s.id !== id));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['availability'], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
   });
 
   // Merge static blocked + real DB sessions + DB available slots

@@ -78,6 +78,7 @@ export interface SettingsResponse {
   timezone: string;
   stripeAccountId: string | null;
   autonomyEnabled: boolean;
+  agentPaused: boolean;
 }
 
 export interface WeekSession {
@@ -107,7 +108,9 @@ export type VoiceProposal =
   | { kind: 'DISMISS_PENDING'; approvalId: string; summary: string }
   | { kind: 'DRAFT_REPLY'; parentName: string; messageBody: string; summary: string }
   | { kind: 'BLOCK_AVAILABILITY'; startAtIso: string; endAtIso: string; summary: string }
-  | { kind: 'CANCEL_SESSION'; sessionId: string; summary: string };
+  | { kind: 'CANCEL_SESSION'; sessionId: string; summary: string }
+  | { kind: 'SCHEDULE_SESSION'; kidId: string; kidName: string; startAtIso: string; summary: string }
+  | { kind: 'ADD_AVAILABILITY'; startAtIso: string; endAtIso: string; summary: string };
 
 export interface StoredVoiceProposal {
   id: string;
@@ -147,6 +150,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  pauseAgent: () =>
+    apiFetch<SettingsResponse>('/api/dashboard/kill-switch', { method: 'POST' }),
+  resumeAgent: () =>
+    apiFetch<SettingsResponse>('/api/dashboard/kill-switch', { method: 'DELETE' }),
   sendApproval: (id: string) =>
     apiFetch<void>(`/api/dashboard/approvals/${id}/send`, { method: 'POST' }),
   dismissApproval: (id: string) =>
@@ -173,4 +180,9 @@ export const api = {
     cancelProposal: (id: string) =>
       apiFetch<{ ok: true }>(`/api/voice/proposals/${id}/cancel`, { method: 'POST' }),
   },
+  recapSession: (sessionId: string, transcript: string) =>
+    apiFetch<{ approvalId: string }>(`/api/dashboard/sessions/${sessionId}/recap`, {
+      method: 'POST',
+      body: JSON.stringify({ transcript }),
+    }),
 };

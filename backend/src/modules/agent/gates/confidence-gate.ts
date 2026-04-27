@@ -30,7 +30,11 @@ export class ConfidenceGate {
     if (intent === 'SMALLTALK' && parentKnown && confidence >= 0.6) {
       return ConfidenceTier.AUTO;
     }
-    // RESCHEDULE, CANCEL, QUESTION_PROGRESS, and fallback → APPROVE
+    // Parent sharing info/notes → safe to auto-acknowledge for known parents
+    if (intent === 'QUESTION_PROGRESS' && parentKnown && confidence >= 0.75) {
+      return ConfidenceTier.AUTO;
+    }
+    // RESCHEDULE, CANCEL, AMBIGUOUS, and fallback → APPROVE
     return ConfidenceTier.APPROVE;
   }
 }

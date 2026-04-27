@@ -159,6 +159,26 @@ export class MessagesService {
         data: { processedAt: new Date() },
       });
 
+    // Check if agent is paused
+    const coach = await this.prisma.coach.findUniqueOrThrow({
+      where: { id: message.coachId },
+      select: { agentPaused: true },
+    });
+
+    if (coach.agentPaused) {
+      await this.prisma.agentDecision.create({
+        data: {
+          coachId: message.coachId,
+          messageId: message.id,
+          intent: 'AMBIGUOUS',
+          actionTaken: 'SKIPPED_AGENT_PAUSED',
+        },
+      });
+      await markProcessed();
+      this.logger.log({ event: 'AGENT_PAUSED_SKIPPED', messageId, coachId: message.coachId });
+      return true;
+    }
+
     // Stage 1: classify
     let classifyResult: Awaited<
       ReturnType<ClassifyIntentState['classifyIntent']>
@@ -254,6 +274,15 @@ export class MessagesService {
       classifyResult,
       draftResult,
     };
+    // Capture parent notes onto the next upcoming session regardless of send tier
+    if (draftResult.sessionNote) {
+      await this.appendSessionNote(
+        message.coachId,
+        context.kids,
+        draftResult.sessionNote,
+      );
+    }
+
     try {
       if (tier === ConfidenceTier.AUTO) {
         await this.outboundService.autoSend(outboundParams);
@@ -264,14 +293,6 @@ export class MessagesService {
             message.parentId,
             context.kids,
             draftResult.bookedSlotIso,
-          );
-        }
-        // If the agent acknowledged a parent note, append it to the next session
-        if (draftResult.sessionNote) {
-          await this.appendSessionNote(
-            message.coachId,
-            context.kids,
-            draftResult.sessionNote,
           );
         }
       } else {

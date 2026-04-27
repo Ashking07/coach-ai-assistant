@@ -1,4 +1,4 @@
-export function VoiceOverlay({ transcript, ready }: { transcript: string; ready: boolean }) {
+export function VoiceOverlay({ transcript, ready, processing = false }: { transcript: string; ready: boolean; processing?: boolean }) {
   return (
     <div
       style={{
@@ -40,7 +40,7 @@ export function VoiceOverlay({ transcript, ready }: { transcript: string; ready:
           textTransform: 'uppercase',
         }}
       >
-        {ready ? 'Listening' : 'Connecting…'}
+        {processing ? 'Processing…' : ready ? 'Listening — release when done' : 'Connecting…'}
       </div>
       <div
         style={{

@@ -72,14 +72,16 @@ export class CoachCommandService {
         await this.dashboard.dismissApproval(coachId, proposal.approvalId);
         return;
       case 'BLOCK_AVAILABILITY':
-        await this.dashboard.addAvailability(
-          coachId,
-          proposal.startAtIso,
-          proposal.endAtIso,
-        );
+        await this.dashboard.addAvailability(coachId, proposal.startAtIso, proposal.endAtIso, true);
         return;
       case 'CANCEL_SESSION':
         await this.dashboard.cancelSession(coachId, proposal.sessionId);
+        return;
+      case 'SCHEDULE_SESSION':
+        await this.dashboard.scheduleSession(coachId, proposal.kidId, proposal.startAtIso);
+        return;
+      case 'ADD_AVAILABILITY':
+        await this.dashboard.addAvailability(coachId, proposal.startAtIso, proposal.endAtIso, false);
         return;
       case 'DRAFT_REPLY':
         await this.dashboard.sendDraftedReply(coachId, {

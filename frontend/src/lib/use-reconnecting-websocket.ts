@@ -63,7 +63,17 @@ export function useReconnectingWebSocket(
     return () => {
       cancelled = true;
       if (retryTimer !== null) window.clearTimeout(retryTimer);
-      socketRef.current?.close();
+      const ws = socketRef.current;
+      if (ws) {
+        // Avoid "closed before connection established" console error on CONNECTING sockets
+        if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onopen = () => ws.close();
+          ws.onerror = null;
+        } else {
+          ws.close();
+        }
+        socketRef.current = null;
+      }
     };
   }, [url]);
 

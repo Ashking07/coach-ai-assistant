@@ -9,10 +9,11 @@ export type PolicyCheckInput = {
 
 export type PolicyCheckResult = { tier: 'ESCALATE'; reason: string } | null;
 
+// AMBIGUOUS is intentionally excluded — it goes to APPROVE tier so the coach
+// can review a draft rather than receiving a cold escalation card.
 const ESCALATE_INTENTS: Intent[] = [
   'PAYMENT',
   'COMPLAINT',
-  'AMBIGUOUS',
   'OUT_OF_SCOPE',
 ];
 

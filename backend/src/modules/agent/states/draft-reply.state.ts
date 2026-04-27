@@ -23,8 +23,8 @@ export type DraftReplyResult = {
 
 const DraftReplySchema = z.object({
   reply: z.string().transform((s) => s.slice(0, 500)),
-  booked_slot_iso: z.string().optional(),
-  session_note: z.string().transform((s) => s.slice(0, 120)).optional(),
+  booked_slot_iso: z.string().nullish().transform((v) => v ?? null),
+  session_note: z.string().nullish().transform((v) => (v ? v.slice(0, 120) : null)),
 });
 
 const DRAFT_SYSTEM_PROMPT = `
@@ -33,6 +33,7 @@ Tone: warm, professional, brief.
 Rules:
 - Maximum 3 sentences.
 - Never invent facts not provided to you.
+- Use the conversation history to maintain context — if the parent refers to something said earlier, acknowledge it naturally.
 - Only reference session times that appear verbatim in the provided available slots list.
 - If no available slots are listed, do not invent times — offer to check with the coach instead.
 - When you confirm a booking for a specific slot, include its ISO datetime in the JSON as "booked_slot_iso".
@@ -65,13 +66,25 @@ export class DraftReplyState {
       year: 'numeric',
     }).format(new Date());
 
+    const historyMessages = [...input.context.recentMessages]
+      .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime())
+      .filter((m) => m.id !== input.message.id)
+      .slice(-8);
+
+    const historyText = historyMessages.length > 0
+      ? historyMessages
+          .map((m) => `${m.direction === 'INBOUND' ? 'Parent' : 'Coach'}: ${m.content}`)
+          .join('\n')
+      : 'No prior messages';
+
     const userPrompt = [
       `Today's date: ${todayLabel}`,
       `Parent name: ${input.context.parent.name}`,
       `Kids: ${input.context.kids.map((k) => k.name).join(', ')}`,
       `Intent: ${input.intent}`,
       `Available slots:\n${slotsText}`,
-      `Original message: ${input.message.content}`,
+      `Conversation history (oldest first):\n${historyText}`,
+      `Current message: ${input.message.content}`,
       tierHint,
       'Respond with JSON: { "reply": "...", "booked_slot_iso": "ISO_OR_OMIT", "session_note": "NOTE_OR_OMIT" }',
     ].join('\n');

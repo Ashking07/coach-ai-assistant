@@ -16,6 +16,16 @@ function describe(p: StoredVoiceProposal['proposal']): { title: string; body: st
       };
     case 'CANCEL_SESSION':
       return { title: 'Cancel session', body: p.summary };
+    case 'SCHEDULE_SESSION':
+      return {
+        title: `Schedule ${p.kidName}`,
+        body: `${new Date(p.startAtIso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · 60 min`,
+      };
+    case 'ADD_AVAILABILITY':
+      return {
+        title: 'Add available slot',
+        body: `${new Date(p.startAtIso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} → ${new Date(p.endAtIso).toLocaleString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
+      };
   }
 }
 

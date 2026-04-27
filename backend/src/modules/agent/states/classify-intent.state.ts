@@ -46,24 +46,25 @@ export type ClassifyIntentResult = {
 };
 
 const INTENT_GUIDANCE = `
-You are an intent classifier for an elite solo coach assistant.
+You are an intent classifier for an elite solo sports coach assistant.
 Classify the incoming parent message into exactly one intent:
-- BOOK: asking to book a new session
-- RESCHEDULE: moving an existing session
-- CANCEL: cancelling a session
-- QUESTION_LOGISTICS: time, location, what to bring, practical details
-- QUESTION_PROGRESS: child progress updates or coaching feedback
+- BOOK: asking to book or schedule a new session (e.g. "Can we book Tuesday?", "I'd like to schedule")
+- RESCHEDULE: moving an existing session to a different time
+- CANCEL: cancelling an existing session
+- QUESTION_LOGISTICS: asking about availability, time slots, location, what to bring, or any practical scheduling detail (e.g. "Are you free today?", "Do you have any slots this week?", "What time works?", "Are you available?")
+- QUESTION_PROGRESS: asking about the child's progress, performance, or coaching feedback
 - PAYMENT: invoices, charges, discounts, refunds, rates, payment links
-- SMALLTALK: greetings, thanks, non-operational chatter
-- COMPLAINT: dissatisfaction, frustration, negative feedback
-- AMBIGUOUS: unclear request or insufficient information
-- OUT_OF_SCOPE: unrelated to coaching operations
+- SMALLTALK: greetings, thanks, casual non-operational chatter ("Great, thanks!", "See you then")
+- COMPLAINT: dissatisfaction, frustration, or negative feedback about the service
+- AMBIGUOUS: genuinely unclear — could mean multiple very different things with no coaching context
+- OUT_OF_SCOPE: completely unrelated to coaching (e.g. spam, wrong number)
 
 Rules:
-- If the message explicitly asks to book/schedule a session with a kid and a time window, classify as BOOK.
-- If a message asks to move an existing booking, classify as RESCHEDULE.
-- Return AMBIGUOUS when message meaning is uncertain.
-- Unknown sender risk is high: when parentKnown is false, bias toward AMBIGUOUS or OUT_OF_SCOPE unless the intent is explicit.
+- "Are you free?", "Any availability?", "Do you have time?" → always QUESTION_LOGISTICS, never AMBIGUOUS.
+- Short messages from known parents asking about time/availability → QUESTION_LOGISTICS.
+- Prefer a specific intent over AMBIGUOUS whenever there is any coaching-related signal.
+- Reserve AMBIGUOUS only when the message is truly unintelligible or contradictory.
+- When parentKnown is false, bias toward OUT_OF_SCOPE unless intent is explicit.
 - Never output NOT_PROCESSED.
 - Output valid JSON only.
 `.trim();
@@ -132,26 +133,40 @@ export class ClassifyIntentState {
     content: string,
     classification: ClassifyIntentResult,
   ): ClassifyIntentResult {
+    const normalized = content.toLowerCase();
+
+    // Availability/free-time queries → always QUESTION_LOGISTICS
+    const isAvailabilityQuery =
+      /\b(are you free|are you available|do you have (a |any )?(slot|time|opening|availability)|any availability|free today|free tomorrow|have time|got time)\b/.test(normalized);
+    if (isAvailabilityQuery) {
+      return {
+        ...classification,
+        intent: 'QUESTION_LOGISTICS',
+        confidence: Math.max(classification.confidence, 0.85),
+        reasoning: 'Availability inquiry → QUESTION_LOGISTICS',
+      };
+    }
+
     if (classification.intent !== 'AMBIGUOUS') {
       return classification;
     }
 
-    const normalized = content.toLowerCase();
+    // Ambiguous with explicit booking verb + time signal → BOOK
     const hasBookingVerb = /\b(book|schedule)\b/.test(normalized);
     const hasTimeSignal =
       /\b(mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|am|pm)\b/.test(
         normalized,
       ) || /\b\d{1,2}(:\d{2})?\b/.test(normalized);
 
-    if (!hasBookingVerb || !hasTimeSignal) {
-      return classification;
+    if (hasBookingVerb && hasTimeSignal) {
+      return {
+        ...classification,
+        intent: 'BOOK',
+        confidence: Math.max(classification.confidence, 0.6),
+        reasoning: 'Explicit booking request with time details',
+      };
     }
 
-    return {
-      ...classification,
-      intent: 'BOOK',
-      confidence: Math.max(classification.confidence, 0.6),
-      reasoning: 'Explicit booking request with time details',
-    };
+    return classification;
   }
 }

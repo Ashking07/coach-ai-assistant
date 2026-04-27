@@ -96,6 +96,16 @@ export function AuditScreen() {
       )}
 
       <div className="md:px-8">
+        {filtered.length === 0 && !isLoading && (
+          <div className="px-4 md:px-4 mt-8">
+            <div
+              className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center"
+              style={{ background: 'var(--panel)', border: '1px solid var(--hairline)' }}
+            >
+              <span style={{ color: 'var(--muted)', fontSize: 14 }}>No messages yet.</span>
+            </div>
+          </div>
+        )}
         {filtered.map((e) => {
           const isOpen = expanded === e.id;
           return (

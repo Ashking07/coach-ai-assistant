@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from '@google/genai';
 import { GEMINI_TOOL_DEFINITIONS } from './coach-command.types';
 
-const VOICE_MODEL = 'gemini-2.5-flash-preview-native-audio-dialog';
+const VOICE_MODEL = 'gemini-2.0-flash-live-001';
 
 const SYSTEM_INSTRUCTION = `
 You are a voice command interpreter for an elite solo coach's dashboard.
@@ -22,6 +22,7 @@ export interface GeminiLiveContext {
   pendingApprovals: { id: string; parentName: string; summary: string }[];
   todaySessions: { id: string; kidName: string; time: string }[];
   parents: { id: string; name: string }[];
+  kids: { id: string; name: string; parentName: string }[];
 }
 
 export class GeminiLiveClient extends EventEmitter {
@@ -43,6 +44,10 @@ export class GeminiLiveClient extends EventEmitter {
       model: VOICE_MODEL,
       config: {
         responseModalities: [Modality.TEXT],
+        inputAudioTranscription: {},
+        realtimeInputConfig: {
+          automaticActivityDetection: { disabled: true },
+        },
         systemInstruction: {
           parts: [
             {
@@ -64,11 +69,22 @@ export class GeminiLiveClient extends EventEmitter {
     });
   }
 
+  signalStartOfSpeech(): void {
+    if (!this.session) return;
+    this.session.sendRealtimeInput({ activityStart: {} });
+  }
+
   sendAudioChunk(buf: Buffer): void {
     if (!this.session) return;
     this.session.sendRealtimeInput({
       audio: { data: buf.toString('base64'), mimeType: 'audio/pcm;rate=16000' },
     });
+  }
+
+  signalEndOfSpeech(): void {
+    if (!this.session) return;
+    this.session.sendRealtimeInput({ activityEnd: {} });
+    this.logger.log({ event: 'GEMINI_END_OF_SPEECH' });
   }
 
   close(): void {
@@ -77,13 +93,17 @@ export class GeminiLiveClient extends EventEmitter {
   }
 
   private handleMessage(msg: LiveServerMessage): void {
+    this.logger.log({ event: 'GEMINI_RAW_MSG', keys: Object.keys(msg), raw: JSON.stringify(msg).slice(0, 300) });
+
     const transcript = msg.serverContent?.inputTranscription?.text;
     if (transcript) {
+      this.logger.log({ event: 'GEMINI_TRANSCRIPT', transcript });
       this.emit('transcript', transcript);
     }
 
     const toolCalls = msg.toolCall?.functionCalls;
     if (toolCalls && toolCalls.length > 0) {
+      this.logger.log({ event: 'GEMINI_TOOL_CALL', name: toolCalls[0].name });
       this.emit('toolCall', toolCalls[0]);
     }
   }

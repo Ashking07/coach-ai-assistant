@@ -1,8 +1,12 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ApprovalStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { Inject } from '@nestjs/common';
+import { z } from 'zod';
 import { PrismaService } from '../../prisma.service';
 import { ChannelSenderRegistry } from '../agent/channels/channel-sender.registry';
+import { LLM_CLIENT } from '../agent/llm/llm.constants';
+import type { LlmClient } from '../agent/llm/llm.client';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +88,7 @@ export interface SettingsDto {
   timezone: string;
   stripeAccountId: string | null;
   autonomyEnabled: boolean;
+  agentPaused: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -145,6 +150,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly channelSenderRegistry: ChannelSenderRegistry,
+    @Inject(LLM_CLIENT) private readonly llm: LlmClient,
   ) {}
 
   async getHome(coachId: string): Promise<HomeResponseDto> {
@@ -328,6 +334,7 @@ export class DashboardService {
       timezone: coach.timezone,
       stripeAccountId: coach.stripeAccountId,
       autonomyEnabled: coach.autonomyEnabled,
+      agentPaused: coach.agentPaused,
     };
   }
 
@@ -346,6 +353,41 @@ export class DashboardService {
       timezone: coach.timezone,
       stripeAccountId: coach.stripeAccountId,
       autonomyEnabled: coach.autonomyEnabled,
+      agentPaused: coach.agentPaused,
+    };
+  }
+
+  async pauseAgent(coachId: string): Promise<SettingsDto> {
+    const coach = await this.prisma.coach.update({
+      where: { id: coachId },
+      data: { agentPaused: true },
+    });
+    this.logger.log({ event: 'AGENT_PAUSED', coachId });
+    return {
+      id: coach.id,
+      name: coach.name,
+      phone: coach.phone,
+      timezone: coach.timezone,
+      stripeAccountId: coach.stripeAccountId,
+      autonomyEnabled: coach.autonomyEnabled,
+      agentPaused: coach.agentPaused,
+    };
+  }
+
+  async resumeAgent(coachId: string): Promise<SettingsDto> {
+    const coach = await this.prisma.coach.update({
+      where: { id: coachId },
+      data: { agentPaused: false },
+    });
+    this.logger.log({ event: 'AGENT_RESUMED', coachId });
+    return {
+      id: coach.id,
+      name: coach.name,
+      phone: coach.phone,
+      timezone: coach.timezone,
+      stripeAccountId: coach.stripeAccountId,
+      autonomyEnabled: coach.autonomyEnabled,
+      agentPaused: coach.agentPaused,
     };
   }
 
@@ -474,9 +516,9 @@ export class DashboardService {
     });
   }
 
-  async addAvailability(coachId: string, startAt: string, endAt: string) {
+  async addAvailability(coachId: string, startAt: string, endAt: string, isBlocked = false) {
     const row = await this.prisma.availability.create({
-      data: { coachId, startAt: new Date(startAt), endAt: new Date(endAt), isBlocked: false },
+      data: { coachId, startAt: new Date(startAt), endAt: new Date(endAt), isBlocked },
       select: { id: true, startAt: true, endAt: true, isBlocked: true, reason: true },
     });
 
@@ -552,5 +594,117 @@ export class DashboardService {
 
   async removeAvailability(coachId: string, id: string): Promise<void> {
     await this.prisma.availability.deleteMany({ where: { id, coachId } });
+  }
+
+  async scheduleSession(coachId: string, kidId: string, startAtIso: string): Promise<void> {
+    const kid = await this.prisma.kid.findFirst({ where: { id: kidId, coachId } });
+    if (!kid) throw new NotFoundException(`Kid not found`);
+
+    await this.prisma.session.create({
+      data: {
+        coachId,
+        kidId,
+        scheduledAt: new Date(startAtIso),
+        durationMinutes: 60,
+        status: 'CONFIRMED',
+      },
+    });
+
+    this.logger.log({ event: 'SESSION_SCHEDULED_VOICE', coachId, kidId, startAtIso });
+  }
+
+  async getKids(coachId: string): Promise<{ id: string; name: string; parentName: string }[]> {
+    const kids = await this.prisma.kid.findMany({
+      where: { coachId },
+      include: { parent: { select: { name: true } } },
+      orderBy: { name: 'asc' },
+    });
+    return kids.map((k) => ({ id: k.id, name: k.name, parentName: k.parent.name }));
+  }
+
+  async createSessionRecap(
+    coachId: string,
+    sessionId: string,
+    transcript: string,
+  ): Promise<{ approvalId: string }> {
+    const session = await this.prisma.session.findFirst({
+      where: { id: sessionId, coachId },
+      include: { kid: { include: { parent: true } } },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+
+    const schemas = z.object({
+      recap: z.string().transform((s) => s.slice(0, 300)),
+    });
+
+    const sessionDate = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(session.scheduledAt);
+
+    const systemPrompt = `
+You are drafting a parent-friendly session recap from a coach's voice notes.
+Tone: warm, encouraging, brief, non-jargon.
+Rules:
+- 2–3 sentences maximum.
+- Focus on the child's progress and highlights.
+- End positively.
+- Do not reference the coach's internal notes or private observations.
+`.trim();
+
+    const userPrompt = [
+      `Session date: ${sessionDate}`,
+      `Child: ${session.kid.name}`,
+      `Duration: ${session.durationMinutes} minutes`,
+      `Coach's notes: ${transcript}`,
+      `Draft a parent-friendly recap for ${session.kid.parent.name}.`,
+      `Respond with JSON: { "recap": "..." }`,
+    ].join('\n');
+
+    const result = await this.llm.classify(transcript, {
+      schema: schemas,
+      systemPrompt,
+      userPrompt,
+      model: 'claude-sonnet-4-6',
+      maxTokens: 300,
+      temperature: 0.3,
+    });
+
+    // Create outbound message — capture the DB id (cuid), not providerMessageId
+    const message = await this.prisma.message.create({
+      data: {
+        coachId,
+        parentId: session.kid.parentId,
+        direction: 'OUTBOUND',
+        channel: session.kid.parent.preferredChannel,
+        providerMessageId: randomUUID(),
+        content: result.parsed.recap,
+        receivedAt: new Date(),
+      },
+    });
+
+    // Queue for coach approval — messageId is the FK to Message.id
+    const approval = await this.prisma.approvalQueue.create({
+      data: {
+        coachId,
+        messageId: message.id,
+        draftReply: result.parsed.recap,
+        status: ApprovalStatus.PENDING,
+      },
+    });
+
+    this.logger.log({
+      event: 'SESSION_RECAP_DRAFTED',
+      coachId,
+      sessionId,
+      approvalId: approval.id,
+    });
+
+    return { approvalId: approval.id };
   }
 }

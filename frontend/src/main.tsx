@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { DemoParentScreen } from './components/screens/demo-parent'
+import { DemoPickerScreen } from './components/screens/demo-picker'
 
 const queryClient = new QueryClient()
 
@@ -14,6 +15,7 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<App />} />
+          <Route path="/demo" element={<DemoPickerScreen />} />
           <Route path="/demo/parent" element={<DemoParentScreen />} />
         </Routes>
       </BrowserRouter>

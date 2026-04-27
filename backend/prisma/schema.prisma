@@ -66,6 +66,7 @@ enum ActionTaken {
   DRAFT_FAILED
   SEND_FAILED
   DELIVERY_FAILED
+  SKIPPED_AGENT_PAUSED
 }
 
 model Coach {
@@ -75,6 +76,7 @@ model Coach {
   timezone         String   @default("America/Los_Angeles")
   stripeAccountId  String?
   autonomyEnabled  Boolean  @default(true)
+  agentPaused      Boolean  @default(false)
   createdAt        DateTime @default(now())
 
   parents          Parent[]

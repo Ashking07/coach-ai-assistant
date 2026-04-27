@@ -115,4 +115,27 @@ export class DashboardController {
   ) {
     return this.dashboardService.cancelSession(this.guard(token), id);
   }
+
+  @Post('sessions/:id/recap')
+  createSessionRecap(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const parsed = body as Record<string, unknown>;
+    if (!parsed || typeof parsed.transcript !== 'string') {
+      throw new BadRequestException('transcript is required and must be a string');
+    }
+    return this.dashboardService.createSessionRecap(this.guard(token), id, parsed.transcript);
+  }
+
+  @Post('kill-switch')
+  pauseAgent(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.pauseAgent(this.guard(token));
+  }
+
+  @Delete('kill-switch')
+  resumeAgent(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.resumeAgent(this.guard(token));
+  }
 }

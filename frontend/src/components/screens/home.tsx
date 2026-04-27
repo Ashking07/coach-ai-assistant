@@ -386,7 +386,7 @@ export function HomeScreen({
               </div>
             </>
           ) : data.fires.length === 0 ? (
-            <EmptyState label="Inbox is quiet. Nothing needs you right now." />
+            <EmptyState label="All clear. Queue is empty." />
           ) : null}
 
           {/* Week view */}
@@ -398,7 +398,7 @@ export function HomeScreen({
       )}
 
       {/* Demo QR */}
-      <SectionLabel count={0}>Demo.</SectionLabel>
+      <SectionLabel>Demo.</SectionLabel>
       <DemoQRCard />
 
       {/* Approval detail overlay */}

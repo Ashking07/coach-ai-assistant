@@ -25,6 +25,22 @@ export function SettingsScreen() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
   });
 
+  const killSwitchMutation = useMutation({
+    mutationFn: (paused: boolean) => (paused ? api.pauseAgent() : api.resumeAgent()),
+    onMutate: async (paused) => {
+      await queryClient.cancelQueries({ queryKey: ['settings'] });
+      const prev = queryClient.getQueryData<SettingsResponse>(['settings']);
+      queryClient.setQueryData<SettingsResponse>(['settings'], (old) =>
+        old ? { ...old, agentPaused: paused } : old,
+      );
+      return { prev };
+    },
+    onError: (_err, _val, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['settings'], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+  });
+
   const autonomy = data?.autonomyEnabled ?? true;
 
   const profileRows = data
@@ -111,6 +127,60 @@ export function SettingsScreen() {
               }}
             >
               STATUS · {autonomy ? 'ON · AGENT ACTIVE' : 'OFF · EVERYTHING QUEUED'}
+            </div>
+          </div>
+
+          {/* Kill switch toggle */}
+          <div
+            className="rounded-2xl p-5 mt-6"
+            style={{ background: 'var(--panel)', border: '1px solid var(--hairline)' }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div style={{ color: 'var(--text)', fontSize: 17 }}>Kill switch</div>
+                <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6, maxWidth: 420 }}>
+                  Pause all agent processing instantly. Incoming messages are still logged but nothing is
+                  classified or sent until you re-enable. Use during travel or off-hours.
+                </div>
+              </div>
+              <button
+                onClick={() => killSwitchMutation.mutate(!(data?.agentPaused ?? false))}
+                disabled={killSwitchMutation.isPending}
+                className="shrink-0 rounded-full transition-colors"
+                style={{
+                  width: 52,
+                  height: 30,
+                  background: (data?.agentPaused ?? false) ? T.terracotta : T.moss,
+                  border: '1px solid var(--hairline)',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  opacity: killSwitchMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 3,
+                    left: (data?.agentPaused ?? false) ? 24 : 3,
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    background: '#F7F3EC',
+                    transition: 'left 0.2s',
+                  }}
+                />
+              </button>
+            </div>
+            <div
+              style={{
+                marginTop: 14,
+                fontFamily: 'Geist Mono, monospace',
+                fontSize: 11,
+                color: (data?.agentPaused ?? false) ? T.terracotta : T.moss,
+                letterSpacing: '0.08em',
+              }}
+            >
+              STATUS · {(data?.agentPaused ?? false) ? 'PAUSED · AGENT STOPPED' : 'ACTIVE · AGENT RUNNING'}
             </div>
           </div>
 
