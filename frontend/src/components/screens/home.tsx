@@ -274,7 +274,23 @@ export function HomeScreen({
   const [activeApproval, setActiveApproval] = useState<Approval | null>(null);
 
   const sendMutation = useMutation({
-    mutationFn: (id: string) => api.sendApproval(id),
+    mutationFn: ({ id, draft }: { id: string; draft: string }) => api.sendApproval(id, draft),
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: ['home'] });
+      const prev = queryClient.getQueryData<HomeResponse>(['home']);
+      queryClient.setQueryData<HomeResponse>(['home'], (old) =>
+        old ? { ...old, approvals: old.approvals.filter((a) => a.id !== id) } : old,
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['home'], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['home'] }),
+  });
+
+  const dismissApprovalMutation = useMutation({
+    mutationFn: (id: string) => api.dismissApproval(id),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['home'] });
       const prev = queryClient.getQueryData<HomeResponse>(['home']);
@@ -289,13 +305,13 @@ export function HomeScreen({
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['home'] }),
   });
 
-  const dismissMutation = useMutation({
-    mutationFn: (id: string) => api.dismissApproval(id),
+  const dismissFireMutation = useMutation({
+    mutationFn: (id: string) => api.dismissFire(id),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['home'] });
       const prev = queryClient.getQueryData<HomeResponse>(['home']);
       queryClient.setQueryData<HomeResponse>(['home'], (old) =>
-        old ? { ...old, approvals: old.approvals.filter((a) => a.id !== id) } : old,
+        old ? { ...old, fires: old.fires.filter((f) => f.id !== id) } : old,
       );
       return { prev };
     },
@@ -359,11 +375,7 @@ export function HomeScreen({
                     key={f.id}
                     fire={f}
                     onOpen={() => setActiveFire(f)}
-                    onDismiss={() =>
-                      queryClient.setQueryData<typeof data>(['dashboard', 'home'], (old) =>
-                        old ? { ...old, fires: old.fires.filter((x) => x.id !== f.id) } : old,
-                      )
-                    }
+                    onDismiss={() => dismissFireMutation.mutate(f.id)}
                   />
                 ))}
               </div>
@@ -379,7 +391,7 @@ export function HomeScreen({
                   <ApprovalCard
                     key={a.id}
                     approval={a}
-                    onSend={() => sendMutation.mutate(a.id)}
+                    onSend={() => sendMutation.mutate({ id: a.id, draft: a.draft })}
                     onEdit={() => setActiveApproval(a)}
                   />
                 ))}
@@ -407,9 +419,7 @@ export function HomeScreen({
           fire={activeFire}
           onClose={() => setActiveFire(null)}
           onResolve={() => {
-            queryClient.setQueryData<typeof data>(['dashboard', 'home'], (old) =>
-              old ? { ...old, fires: old.fires.filter((f) => f.id !== activeFire.id) } : old,
-            );
+            dismissFireMutation.mutate(activeFire.id);
             setActiveFire(null);
           }}
         />
@@ -419,12 +429,12 @@ export function HomeScreen({
         <ApprovalDetail
           approval={activeApproval}
           onClose={() => setActiveApproval(null)}
-          onSend={() => {
-            sendMutation.mutate(activeApproval.id);
+          onSend={(draft) => {
+            sendMutation.mutate({ id: activeApproval.id, draft });
             setActiveApproval(null);
           }}
           onDismiss={() => {
-            dismissMutation.mutate(activeApproval.id);
+            dismissApprovalMutation.mutate(activeApproval.id);
             setActiveApproval(null);
           }}
         />

@@ -67,8 +67,14 @@ export class DashboardController {
   sendApproval(
     @Param('id') id: string,
     @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: unknown,
   ) {
-    return this.dashboardService.sendApproval(this.guard(token), id);
+    const draft = (body as Record<string, unknown>)?.draft;
+    return this.dashboardService.sendApproval(
+      this.guard(token),
+      id,
+      typeof draft === 'string' ? draft : undefined,
+    );
   }
 
   @Post('approvals/:id/dismiss')
@@ -77,6 +83,14 @@ export class DashboardController {
     @Headers('x-dashboard-token') token: string | undefined,
   ) {
     return this.dashboardService.dismissApproval(this.guard(token), id);
+  }
+
+  @Post('fires/:id/dismiss')
+  dismissFire(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+  ) {
+    return this.dashboardService.dismissFire(this.guard(token), id);
   }
 
   @Get('sessions/week')

@@ -169,6 +169,7 @@ export class DashboardService {
             in: ['ESCALATED', 'CLASSIFY_FAILED', 'DRAFT_FAILED', 'SEND_FAILED'],
           },
           createdAt: { gte: since24h },
+          resolvedAt: null,
         },
         include: {
           message: { include: { parent: { include: { kids: { take: 1 } } } } },
@@ -391,10 +392,11 @@ export class DashboardService {
     };
   }
 
-  async sendApproval(coachId: string, approvalId: string): Promise<void> {
+  async sendApproval(coachId: string, approvalId: string, draft?: string): Promise<void> {
     await this.prisma.approvalQueue.update({
       where: { id: approvalId, coachId },
       data: {
+        ...(draft ? { draftReply: draft } : {}),
         status: ApprovalStatus.APPROVED,
         resolvedAt: new Date(),
         resolvedBy: 'coach',
@@ -410,6 +412,13 @@ export class DashboardService {
         resolvedAt: new Date(),
         resolvedBy: 'coach',
       },
+    });
+  }
+
+  async dismissFire(coachId: string, decisionId: string): Promise<void> {
+    await this.prisma.agentDecision.update({
+      where: { id: decisionId, coachId },
+      data: { resolvedAt: new Date(), resolvedBy: 'coach' },
     });
   }
 

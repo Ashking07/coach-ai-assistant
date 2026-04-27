@@ -154,10 +154,15 @@ export const api = {
     apiFetch<SettingsResponse>('/api/dashboard/kill-switch', { method: 'POST' }),
   resumeAgent: () =>
     apiFetch<SettingsResponse>('/api/dashboard/kill-switch', { method: 'DELETE' }),
-  sendApproval: (id: string) =>
-    apiFetch<void>(`/api/dashboard/approvals/${id}/send`, { method: 'POST' }),
+  sendApproval: (id: string, draft?: string) =>
+    apiFetch<void>(`/api/dashboard/approvals/${id}/send`, {
+      method: 'POST',
+      body: draft ? JSON.stringify({ draft }) : undefined,
+    }),
   dismissApproval: (id: string) =>
     apiFetch<void>(`/api/dashboard/approvals/${id}/dismiss`, { method: 'POST' }),
+  dismissFire: (id: string) =>
+    apiFetch<void>(`/api/dashboard/fires/${id}/dismiss`, { method: 'POST' }),
   createParentSession: (parentId: string) =>
     apiFetch<ParentSessionResponse>('/api/demo/parent-session', {
       method: 'POST',

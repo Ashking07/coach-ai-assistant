@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { T } from '../tokens';
 import { IntentBadge } from './badges';
@@ -11,9 +12,11 @@ export function ApprovalDetail({
 }: {
   approval: Approval;
   onClose: () => void;
-  onSend: () => void;
+  onSend: (draft: string) => void;
   onDismiss: () => void;
 }) {
+  const [draft, setDraft] = useState(approval.draft);
+
   return (
     <div
       className="fixed inset-0 overflow-y-auto"
@@ -74,8 +77,29 @@ export function ApprovalDetail({
         {/* Incoming */}
         <Field label="INCOMING">{approval.incoming}</Field>
 
-        {/* Draft */}
-        <Field label="DRAFT">{approval.draft}</Field>
+        {/* Editable draft */}
+        <div>
+          <FieldLabel>DRAFT — edit before sending</FieldLabel>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={5}
+            style={{
+              width: '100%',
+              background: T.amber + '0C',
+              border: `1px solid ${T.amber}40`,
+              borderRadius: 12,
+              padding: '12px 14px',
+              color: 'var(--text)',
+              fontSize: 14,
+              lineHeight: 1.55,
+              resize: 'vertical',
+              outline: 'none',
+              fontFamily: 'Inter Tight, system-ui, sans-serif',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
 
         {/* Reason */}
         {approval.reason && (
@@ -116,9 +140,15 @@ export function ApprovalDetail({
           Dismiss
         </button>
         <button
-          onClick={onSend}
+          onClick={() => onSend(draft)}
+          disabled={!draft.trim()}
           className="flex-1 py-3 rounded-2xl text-sm font-medium transition-opacity hover:opacity-80"
-          style={{ background: T.sunrise, color: '#F7F3EC', border: 'none', cursor: 'pointer' }}
+          style={{
+            background: draft.trim() ? T.sunrise : 'var(--surface-sub)',
+            color: draft.trim() ? '#F7F3EC' : 'var(--muted)',
+            border: 'none',
+            cursor: draft.trim() ? 'pointer' : 'not-allowed',
+          }}
         >
           Send reply
         </button>

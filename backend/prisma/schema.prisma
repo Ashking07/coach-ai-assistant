@@ -190,6 +190,8 @@ model AgentDecision {
   tokensOut   Int?
   latencyMs   Int?
   createdAt   DateTime       @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
 
   coach       Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
   message     Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
