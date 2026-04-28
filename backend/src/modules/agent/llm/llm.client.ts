@@ -99,12 +99,15 @@ export class AnthropicLlmClient implements LlmClient {
     }
 
     const rawText = firstText.text.trim();
-    const jsonText = rawText.startsWith('```')
-      ? rawText
-          .replace(/^```(?:json)?\s*/i, '')
-          .replace(/\s*```$/, '')
-          .trim()
+
+    // Strip markdown code fences if present, then find the JSON object/array
+    const stripped = rawText.startsWith('```')
+      ? rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
       : rawText;
+
+    // Robustly extract the first {...} block in case the model adds preamble text
+    const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+    const jsonText = jsonMatch ? jsonMatch[0] : stripped;
 
     let parsedJson: unknown;
     try {

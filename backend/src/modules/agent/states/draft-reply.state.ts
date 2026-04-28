@@ -40,6 +40,9 @@ Rules:
   Use the [iso: ...] value from the slot list exactly. Only set this field when you are confirming a booking.
 - If the parent shares actionable information about their child (medical, injury, equipment, dietary, scheduling notes),
   extract a concise coach-facing note (≤100 chars) and include it as "session_note". Omit if there is nothing noteworthy.
+
+IMPORTANT: Always respond with valid JSON only — no preamble, no explanation, no markdown.
+Format: { "reply": "...", "booked_slot_iso": null, "session_note": null }
 `.trim();
 
 @Injectable()
@@ -87,7 +90,6 @@ export class DraftReplyState {
       `Conversation history (oldest first):\n${historyText}`,
       `Current message: ${input.message.content}`,
       tierHint,
-      'Respond with JSON: { "reply": "...", "booked_slot_iso": "ISO_OR_OMIT", "session_note": "NOTE_OR_OMIT" }',
     ].join('\n');
 
     const result = await this.llm.classify(input.message.content, {
