@@ -168,8 +168,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ parentId }),
     }),
-  getWeekSessions: () => apiFetch<WeekSession[]>('/api/dashboard/sessions/week'),
-  getAvailability: () => apiFetch<AvailabilitySlot[]>('/api/dashboard/availability'),
+  getWeekSessions: (weekStart?: string) => apiFetch<WeekSession[]>(`/api/dashboard/sessions/week${weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : ''}`),
+  getAvailability: (weekStart?: string) => apiFetch<AvailabilitySlot[]>(`/api/dashboard/availability${weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : ''}`),
   addAvailability: (startAt: string, endAt: string) =>
     apiFetch<AvailabilitySlot>('/api/dashboard/availability', {
       method: 'POST',

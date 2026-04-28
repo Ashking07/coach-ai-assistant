@@ -41,11 +41,11 @@ function hoursAvail(items: Block[]) {
   return mins / 60;
 }
 
-function getWeekInfo() {
+function getWeekInfo(offsetWeeks = 0) {
   const now = new Date();
   const dow = now.getDay();
   const monday = new Date(now);
-  monday.setDate(now.getDate() - ((dow + 6) % 7));
+  monday.setDate(now.getDate() - ((dow + 6) % 7) + offsetWeeks * 7);
   monday.setHours(0, 0, 0, 0);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
@@ -120,51 +120,56 @@ export function WeekView({
 }) {
   const todayIndex = today ?? ((new Date().getDay() + 6) % 7);
   const [openDay, setOpenDay] = useState<number | null>(null);
-  const { monday, dateRange } = getWeekInfo();
+  const [weekOffset, setWeekOffset] = useState(0);
+  const { monday, dateRange } = getWeekInfo(weekOffset);
+  const weekStartIso = monday.toISOString();
   const queryClient = useQueryClient();
+  const isCurrentWeek = weekOffset === 0;
 
   const { data: dbSessions = [] } = useQuery({
-    queryKey: ['week-sessions'],
-    queryFn: api.getWeekSessions,
+    queryKey: ['week-sessions', weekStartIso],
+    queryFn: () => api.getWeekSessions(weekStartIso),
     staleTime: 10_000,
-    refetchInterval: 30_000,
+    refetchInterval: isCurrentWeek ? 30_000 : false,
   });
 
   const { data: dbSlots = [] } = useQuery({
-    queryKey: ['availability'],
-    queryFn: api.getAvailability,
+    queryKey: ['availability', weekStartIso],
+    queryFn: () => api.getAvailability(weekStartIso),
     staleTime: 0,
-    refetchInterval: 15_000,
+    refetchInterval: isCurrentWeek ? 15_000 : false,
   });
+
+  const availKey = ['availability', weekStartIso];
 
   const addMutation = useMutation({
     mutationFn: ({ startAt, endAt }: { startAt: string; endAt: string }) =>
       api.addAvailability(startAt, endAt),
     onMutate: async ({ startAt, endAt }) => {
-      await queryClient.cancelQueries({ queryKey: ['availability'] });
-      const prev = queryClient.getQueryData<AvailabilitySlot[]>(['availability']) ?? [];
+      await queryClient.cancelQueries({ queryKey: availKey });
+      const prev = queryClient.getQueryData<AvailabilitySlot[]>(availKey) ?? [];
       const optimistic: AvailabilitySlot = { id: `opt-${Date.now()}`, startAt, endAt, isBlocked: false, reason: '' };
-      queryClient.setQueryData(['availability'], [...prev, optimistic]);
+      queryClient.setQueryData(availKey, [...prev, optimistic]);
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['availability'], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(availKey, ctx.prev);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: availKey }),
   });
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => api.removeAvailability(id),
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['availability'] });
-      const prev = queryClient.getQueryData<AvailabilitySlot[]>(['availability']) ?? [];
-      queryClient.setQueryData(['availability'], prev.filter((s) => s.id !== id));
+      await queryClient.cancelQueries({ queryKey: availKey });
+      const prev = queryClient.getQueryData<AvailabilitySlot[]>(availKey) ?? [];
+      queryClient.setQueryData(availKey, prev.filter((s) => s.id !== id));
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['availability'], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(availKey, ctx.prev);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['availability'] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: availKey }),
   });
 
   // Merge static blocked + real DB sessions + DB available slots
@@ -225,18 +230,20 @@ export function WeekView({
         </div>
         <div className="flex items-center gap-1">
           <button
+            onClick={() => setWeekOffset((o) => o - 1)}
             className="p-2 rounded-lg"
             style={{ color: 'var(--muted)', border: '1px solid var(--hairline)', background: 'none', cursor: 'pointer' }}
           >
             <ChevronLeft size={14} />
           </button>
           <button
+            onClick={() => setWeekOffset(0)}
             className="px-3 py-2 rounded-lg"
             style={{
               fontFamily: 'Geist Mono, monospace',
               fontSize: 11,
-              color: T.sunrise,
-              border: `1px solid ${T.sunrise}55`,
+              color: isCurrentWeek ? T.sunrise : 'var(--muted)',
+              border: `1px solid ${isCurrentWeek ? T.sunrise + '55' : 'var(--hairline)'}`,
               letterSpacing: '0.08em',
               background: 'none',
               cursor: 'pointer',
@@ -245,6 +252,7 @@ export function WeekView({
             TODAY
           </button>
           <button
+            onClick={() => setWeekOffset((o) => o + 1)}
             className="p-2 rounded-lg"
             style={{ color: 'var(--muted)', border: '1px solid var(--hairline)', background: 'none', cursor: 'pointer' }}
           >
@@ -393,6 +401,8 @@ export function WeekView({
           day={openDay}
           dateNum={getDayDate(monday, openDay)}
           blocks={blocks}
+          isToday={openDay === todayIndex && isCurrentWeek}
+          isPast={openDay < todayIndex && isCurrentWeek}
           onClose={() => setOpenDay(null)}
           onToggle={(start) => toggle(openDay, start)}
         />
@@ -405,17 +415,25 @@ function DayDetailSheet({
   day,
   dateNum,
   blocks,
+  isToday,
+  isPast,
   onClose,
   onToggle,
 }: {
   day: number;
   dateNum: number;
   blocks: Block[];
+  isToday: boolean;
+  isPast: boolean;
   onClose: () => void;
   onToggle: (slotStart: number) => void;
 }) {
   const slots: number[] = [];
   for (let m = HOUR_START * 60; m < HOUR_END * 60; m += 30) slots.push(m);
+
+  const nowMinutes = isToday
+    ? new Date().getHours() * 60 + new Date().getMinutes()
+    : isPast ? 24 * 60 : -1; // -1 = nothing grayed (future week)
 
   const findBlock = (slot: number) =>
     blocks.find((b) => b.day === day && b.start <= slot && b.end > slot);
@@ -452,31 +470,36 @@ function DayDetailSheet({
           {slots.map((s) => {
             const block = findBlock(s);
             const isHourStart = s % 60 === 0;
-            const clickable = !block || block.kind === 'available';
+            const slotIsPast = nowMinutes > 0 && s < nowMinutes;
+            const clickable = !slotIsPast && (!block || block.kind === 'available');
 
-            let content: React.ReactNode = (
+            let content: React.ReactNode = slotIsPast ? (
+              <span style={{ color: 'var(--muted)', fontSize: 12, opacity: 0.5 }}>Past</span>
+            ) : (
               <span style={{ color: 'var(--muted)', fontSize: 13, fontStyle: 'italic' }}>
                 Empty · tap to mark available
               </span>
             );
-            let bg = 'transparent';
+            let bg = slotIsPast ? 'var(--surface-sub)' : 'transparent';
             let leftBorderColor = 'transparent';
 
             if (block?.kind === 'booked') {
-              bg = T.sunrise + '18';
-              leftBorderColor = T.sunrise;
+              bg = slotIsPast ? stone + '10' : T.sunrise + '18';
+              leftBorderColor = slotIsPast ? stone : T.sunrise;
               content = (
                 <>
-                  <span style={{ color: 'var(--text)', fontSize: 14 }}>{block.kid}</span>
-                  <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: T.sunrise, marginLeft: 8 }}>
-                    SESSION
+                  <span style={{ color: slotIsPast ? 'var(--muted)' : 'var(--text)', fontSize: 14 }}>{block.kid}</span>
+                  <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: slotIsPast ? 'var(--muted)' : T.sunrise, marginLeft: 8 }}>
+                    {slotIsPast ? 'PAST' : 'SESSION'}
                   </span>
                 </>
               );
             } else if (block?.kind === 'available') {
-              bg = T.moss + '12';
-              leftBorderColor = T.moss;
-              content = (
+              bg = slotIsPast ? stone + '10' : T.moss + '12';
+              leftBorderColor = slotIsPast ? stone : T.moss;
+              content = slotIsPast ? (
+                <span style={{ color: 'var(--muted)', fontSize: 13, opacity: 0.6 }}>Expired slot</span>
+              ) : (
                 <>
                   <span style={{ color: T.moss, fontSize: 14 }}>Available</span>
                   <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, color: 'var(--muted)', marginLeft: 8 }}>
@@ -511,6 +534,7 @@ function DayDetailSheet({
                   borderRight: 'none',
                   borderBottom: 'none',
                   cursor: clickable ? 'pointer' : 'default',
+                  opacity: slotIsPast && !block ? 0.55 : 1,
                 }}
               >
                 <span

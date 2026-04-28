@@ -485,11 +485,14 @@ export class DashboardService {
     });
   }
 
-  async getWeekSessions(coachId: string) {
-    const now = new Date();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    monday.setHours(0, 0, 0, 0);
+  async getWeekSessions(coachId: string, weekStart?: string) {
+    const monday = weekStart ? new Date(weekStart) : (() => {
+      const now = new Date();
+      const d = new Date(now);
+      d.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      d.setHours(0, 0, 0, 0);
+      return d;
+    })();
     const weekEnd = new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const sessions = await this.prisma.session.findMany({
@@ -511,11 +514,14 @@ export class DashboardService {
     }));
   }
 
-  async getAvailability(coachId: string) {
-    const now = new Date();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    monday.setHours(0, 0, 0, 0);
+  async getAvailability(coachId: string, weekStart?: string) {
+    const monday = weekStart ? new Date(weekStart) : (() => {
+      const now = new Date();
+      const d = new Date(now);
+      d.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      d.setHours(0, 0, 0, 0);
+      return d;
+    })();
     const weekEnd = new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     return this.prisma.availability.findMany({

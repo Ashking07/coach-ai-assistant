@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -94,13 +95,19 @@ export class DashboardController {
   }
 
   @Get('sessions/week')
-  getWeekSessions(@Headers('x-dashboard-token') token: string | undefined) {
-    return this.dashboardService.getWeekSessions(this.guard(token));
+  getWeekSessions(
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Query('weekStart') weekStart?: string,
+  ) {
+    return this.dashboardService.getWeekSessions(this.guard(token), weekStart);
   }
 
   @Get('availability')
-  getAvailability(@Headers('x-dashboard-token') token: string | undefined) {
-    return this.dashboardService.getAvailability(this.guard(token));
+  getAvailability(
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Query('weekStart') weekStart?: string,
+  ) {
+    return this.dashboardService.getAvailability(this.guard(token), weekStart);
   }
 
   @Post('availability')
