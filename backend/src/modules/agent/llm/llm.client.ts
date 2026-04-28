@@ -113,7 +113,7 @@ export class AnthropicLlmClient implements LlmClient {
     try {
       parsedJson = JSON.parse(jsonText);
     } catch (error) {
-      throw new LlmOutputError('LLM output was not valid JSON', error);
+      throw new LlmOutputError('LLM output was not valid JSON', error, stripped);
     }
 
     const parsed = opts.schema.safeParse(parsedJson);

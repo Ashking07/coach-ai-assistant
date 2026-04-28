@@ -3,6 +3,7 @@ import { ConfidenceTier, type Intent, type Message } from '@prisma/client';
 import { z } from 'zod';
 import { DRAFTING_MODEL, LLM_CLIENT } from '../llm/llm.constants';
 import type { LlmClient, LlmUsage } from '../llm/llm.client';
+import { LlmOutputError } from '../llm/llm.errors';
 import type { AgentContext } from './load-context.state';
 
 export type DraftReplyInput = {
@@ -92,14 +93,30 @@ export class DraftReplyState {
       tierHint,
     ].join('\n');
 
-    const result = await this.llm.classify(input.message.content, {
-      schema: DraftReplySchema,
-      systemPrompt: DRAFT_SYSTEM_PROMPT,
-      userPrompt,
-      model: DRAFTING_MODEL,
-      maxTokens: 400,
-      temperature: 0.3,
-    });
+    let result;
+    try {
+      result = await this.llm.classify(input.message.content, {
+        schema: DraftReplySchema,
+        systemPrompt: DRAFT_SYSTEM_PROMPT,
+        userPrompt,
+        model: DRAFTING_MODEL,
+        maxTokens: 400,
+        temperature: 0.3,
+      });
+    } catch (err) {
+      // If the model returned plain prose instead of JSON, use it directly as the reply
+      if (err instanceof LlmOutputError && err.rawText && err.rawText.length > 10) {
+        return {
+          draft: err.rawText.slice(0, 500),
+          bookedSlotIso: null,
+          sessionNote: null,
+          usage: { tokensIn: 0, tokensOut: 0 },
+          model: DRAFTING_MODEL,
+          latencyMs: 0,
+        };
+      }
+      throw err;
+    }
 
     return {
       draft: result.parsed.reply,
