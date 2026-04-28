@@ -60,6 +60,7 @@ export class DraftReplyState {
         : 'Reply warmly but tentatively — the coach will review before sending.';
 
     const todayLabel = new Intl.DateTimeFormat('en-US', {
+      timeZone: input.context.timezone,
       weekday: 'long',
       month: 'short',
       day: 'numeric',

@@ -19,6 +19,7 @@ export type AgentContext = {
   recentMessages: Message[];
   upcomingSessions: Array<Session & { kid: Pick<Kid, 'id' | 'name'> }>;
   availableSlots: AvailableSlot[];
+  timezone: string;
 };
 
 function formatSlotLabel(startAt: Date, endAt: Date, timezone: string): string {
@@ -91,6 +92,7 @@ export class LoadContextState {
       recentMessages,
       upcomingSessions,
       availableSlots,
+      timezone: coach.timezone,
     };
   }
 
