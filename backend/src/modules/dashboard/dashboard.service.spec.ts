@@ -3,6 +3,9 @@ import { DashboardService } from './dashboard.service';
 import { PrismaService } from '../../prisma.service';
 import { ApprovalStatus } from '@prisma/client';
 import { ChannelSenderRegistry } from '../agent/channels/channel-sender.registry';
+import { LLM_CLIENT } from '../agent/llm/llm.constants';
+import { NoopObsEmitter } from '../observability/noop-emitter';
+import { OBS_EMITTER } from '../observability/observability.constants';
 
 function makePrismaMock() {
   return {
@@ -26,6 +29,8 @@ async function makeService(prisma: ReturnType<typeof makePrismaMock>) {
       DashboardService,
       { provide: PrismaService, useValue: prisma },
       { provide: ChannelSenderRegistry, useValue: channelSenderRegistryMock },
+      { provide: LLM_CLIENT, useValue: { classify: jest.fn() } },
+      { provide: OBS_EMITTER, useValue: new NoopObsEmitter() },
     ],
   }).compile();
   return moduleRef.get(DashboardService);

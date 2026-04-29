@@ -1,7 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { CoachCommandProposal, StoredProposal } from './coach-command.types';
+import { OBS_EMITTER, type ObsEmitterPort } from '../observability/observability.constants';
+import { traceRun, traceStep } from '../observability/trace-step';
 
 const PROPOSAL_TTL_MS = 60 * 1000;
 
@@ -10,7 +12,10 @@ export class CoachCommandService {
   private readonly logger = new Logger(CoachCommandService.name);
   private readonly proposals = new Map<string, StoredProposal>();
 
-  constructor(private readonly dashboard: DashboardService) {}
+  constructor(
+    private readonly dashboard: DashboardService,
+    @Inject(OBS_EMITTER) private readonly obs: ObsEmitterPort,
+  ) {}
 
   storeProposal(coachId: string, proposal: CoachCommandProposal): StoredProposal {
     const id = `prop_${randomUUID()}`;
@@ -43,7 +48,23 @@ export class CoachCommandService {
     if (!stored) {
       throw new NotFoundException('Proposal not found or expired');
     }
-    await this.dispatch(coachId, stored.proposal);
+    await traceRun(
+      this.obs,
+      {
+        runbook: 'voice.confirm_proposal',
+        input: { proposalId: id, kind: stored.proposal.kind },
+      },
+      async (ctx) => {
+        await traceStep(
+          this.obs,
+          ctx,
+          'dispatch',
+          `voice.${stored.proposal.kind.toLowerCase()}`,
+          { kind: stored.proposal.kind },
+          () => this.dispatch(coachId, stored.proposal),
+        );
+      },
+    );
     this.proposals.delete(id);
     this.logger.log({
       event: 'PROPOSAL_CONFIRMED',

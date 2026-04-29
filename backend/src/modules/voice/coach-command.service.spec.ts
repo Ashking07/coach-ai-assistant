@@ -1,6 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { CoachCommandService } from './coach-command.service';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { NoopObsEmitter } from '../observability/noop-emitter';
+import { OBS_EMITTER } from '../observability/observability.constants';
 
 describe('CoachCommandService', () => {
   let service: CoachCommandService;
@@ -19,6 +21,7 @@ describe('CoachCommandService', () => {
       providers: [
         CoachCommandService,
         { provide: DashboardService, useValue: dashboard },
+        { provide: OBS_EMITTER, useValue: new NoopObsEmitter() },
       ],
     }).compile();
     service = moduleRef.get(CoachCommandService);
