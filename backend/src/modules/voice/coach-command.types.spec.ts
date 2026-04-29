@@ -31,15 +31,17 @@ describe('CoachCommandProposalSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('exposes 5 tool definitions for Gemini', () => {
-    expect(GEMINI_TOOL_DEFINITIONS).toHaveLength(5);
+  it('exposes 7 tool definitions for Gemini', () => {
+    expect(GEMINI_TOOL_DEFINITIONS).toHaveLength(7);
     const names = GEMINI_TOOL_DEFINITIONS.map((t) => t.name).sort();
     expect(names).toEqual([
+      'add_availability',
       'approve_pending',
       'block_availability',
       'cancel_session',
       'dismiss_pending',
       'draft_reply',
+      'schedule_session',
     ]);
   });
 });
