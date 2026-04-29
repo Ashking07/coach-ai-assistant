@@ -5,6 +5,10 @@ import { DemoWebChatGateway } from './modules/demo-chat/web-chat.gateway';
 import { VoiceGateway } from './modules/voice/voice.gateway';
 import { MessagesService } from './modules/messages/messages.service';
 import { startWorker } from './worker';
+import {
+  OBS_EMITTER,
+  type ObsEmitterPort,
+} from './modules/observability/observability.constants';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -30,6 +34,23 @@ async function bootstrap() {
   voiceGateway.attachToHttpServer(httpServer);
 
   await app.listen(process.env.PORT ?? 3002);
+
+  const obs = app.get<ObsEmitterPort>(OBS_EMITTER);
+  const shutdown = async () => {
+    try {
+      await obs.flush();
+    } catch {
+      // Best-effort flush; never block shutdown.
+    }
+    await app.close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => {
+    void shutdown();
+  });
+  process.on('SIGINT', () => {
+    void shutdown();
+  });
 
   // Run BullMQ worker in-process so we don't need a separate Render service
   const messagesService = app.get(MessagesService);

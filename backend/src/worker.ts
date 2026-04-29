@@ -10,6 +10,10 @@ import {
 } from './bullmq.constants';
 import { AppModule } from './app.module';
 import { MessagesService } from './modules/messages/messages.service';
+import {
+  OBS_EMITTER,
+  type ObsEmitterPort,
+} from './modules/observability/observability.constants';
 
 const MessageIngestedPayload = z.object({ messageId: z.string().min(1) });
 
@@ -64,6 +68,7 @@ export function startWorker(messagesService: MessagesService) {
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const messagesService = app.get(MessagesService);
+  const obs = app.get<ObsEmitterPort>(OBS_EMITTER);
 
   const recovered = await messagesService.recoverOrphanedMessages();
   if (recovered > 0) {
@@ -74,6 +79,9 @@ async function bootstrap() {
 
   const shutdown = async () => {
     await close();
+    try {
+      await obs.flush();
+    } catch {}
     await app.close();
   };
 
