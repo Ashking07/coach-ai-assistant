@@ -26,6 +26,8 @@ const EnvSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
   TWILIO_PHONE_NUMBER: z.string().regex(/^\+[1-9]\d{1,14}$/, 'must be E.164').optional(),
   TWILIO_WEBHOOK_VERIFY_DISABLED: BoolFlagSchema,
+  TELNYX_API_KEY: z.string().min(1).optional(),
+  TELNYX_PHONE_NUMBER: z.string().regex(/^\+[1-9]\d{1,14}$/, 'must be E.164').optional(),
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:3002'),
   DEMO_PARENT_CHAT_ENABLED: BoolFlagSchema,
   DEMO_TOKEN_SECRET: z.string().optional(),
@@ -42,40 +44,7 @@ const EnvSchema = z.object({
   CORS_ORIGIN: z.string().optional(),
   BULLMQ_QUEUE_NAME: z.string().optional(),
 }).superRefine((env, ctx) => {
-  if (env.NODE_ENV === 'production') {
-    if (!env.TWILIO_ACCOUNT_SID) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['TWILIO_ACCOUNT_SID'],
-        message: 'TWILIO_ACCOUNT_SID is required in production',
-      });
-    }
-
-    if (!env.TWILIO_AUTH_TOKEN) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['TWILIO_AUTH_TOKEN'],
-        message: 'TWILIO_AUTH_TOKEN is required in production',
-      });
-    }
-
-    if (!env.TWILIO_PHONE_NUMBER) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['TWILIO_PHONE_NUMBER'],
-        message: 'TWILIO_PHONE_NUMBER is required in production',
-      });
-    }
-
-    if (env.TWILIO_WEBHOOK_VERIFY_DISABLED) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['TWILIO_WEBHOOK_VERIFY_DISABLED'],
-        message:
-          'TWILIO_WEBHOOK_VERIFY_DISABLED cannot be enabled in production',
-      });
-    }
-  }
+  // No hard requirement for SMS provider in production — either Telnyx or no SMS is fine
 
   if (env.DEMO_PARENT_CHAT_ENABLED) {
     if (!env.DEMO_TOKEN_SECRET || env.DEMO_TOKEN_SECRET.length < 32) {

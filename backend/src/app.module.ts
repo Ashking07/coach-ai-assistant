@@ -8,6 +8,7 @@ import { AgentModule } from './modules/agent/agent.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { TwilioModule } from './modules/twilio/twilio.module';
+import { TelnyxModule } from './modules/telnyx/telnyx.module';
 import { DemoChatModule } from './modules/demo-chat/demo-chat.module';
 import { VoiceModule } from './modules/voice/voice.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
@@ -26,6 +27,7 @@ import { validateEnv } from './common/env.validation';
     MessagesModule,
     DashboardModule,
     TwilioModule,
+    TelnyxModule,
     DemoChatModule,
     VoiceModule,
   ],
