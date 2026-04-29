@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AnthropicLlmClient } from './llm.client';
 import { LlmOutputError } from './llm.errors';
+import { NoopObsEmitter } from '../../observability/noop-emitter';
 
 describe('AnthropicLlmClient.classify', () => {
   it('calls SDK with expected shape and returns parsed output', async () => {
@@ -19,7 +20,7 @@ describe('AnthropicLlmClient.classify', () => {
       ],
     });
 
-    const client = new AnthropicLlmClient({
+    const client = new AnthropicLlmClient(new NoopObsEmitter(), {
       messages: { create },
     });
 
@@ -69,7 +70,7 @@ describe('AnthropicLlmClient.classify', () => {
       ],
     });
 
-    const client = new AnthropicLlmClient({
+    const client = new AnthropicLlmClient(new NoopObsEmitter(), {
       messages: { create },
     });
 
@@ -85,5 +86,52 @@ describe('AnthropicLlmClient.classify', () => {
         systemPrompt: 'Classify intent',
       }),
     ).rejects.toBeInstanceOf(LlmOutputError);
+  });
+
+  describe('classify with runCtx', () => {
+    it('emits stepStart and stepEnd on the emitter', async () => {
+      const calls: { kind: string; payload: any }[] = [];
+      const recording = {
+        newRunId: () => 'run_x',
+        newStepId: () => 'step_x',
+        runStart: (p: any) => calls.push({ kind: 'runStart', payload: p }),
+        runEnd: (p: any) => calls.push({ kind: 'runEnd', payload: p }),
+        stepStart: (p: any) => calls.push({ kind: 'stepStart', payload: p }),
+        stepEnd: (p: any) => calls.push({ kind: 'stepEnd', payload: p }),
+        flush: async () => {},
+      };
+      const fakeAnthropic = {
+        messages: {
+          create: async () => ({
+            model: 'claude-test',
+            usage: { input_tokens: 11, output_tokens: 7 },
+            content: [{ type: 'text', text: '{"ok": true}' }],
+          }),
+        },
+      };
+      const client = new AnthropicLlmClient(
+        recording as any,
+        fakeAnthropic as any,
+      );
+      const ctx = {
+        runId: 'run_x',
+        stepIndex: 0,
+        totalTokens: 0,
+        totalCostUsd: 0,
+        addTokens(i: number, o: number) {
+          this.totalTokens += i + o;
+        },
+        addCost() {},
+      };
+      await client.classify('hi', {
+        schema: z.object({ ok: z.boolean() }),
+        systemPrompt: 'sys',
+        runCtx: ctx as any,
+      });
+      expect(calls.map((c) => c.kind)).toEqual(['stepStart', 'stepEnd']);
+      expect(calls[1].payload.status).toBe('ok');
+      expect(calls[1].payload.output.tokensIn).toBe(11);
+      expect(ctx.totalTokens).toBe(18);
+    });
   });
 });

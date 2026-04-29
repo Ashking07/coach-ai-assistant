@@ -3,6 +3,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z, type ZodType } from 'zod';
 import { CLASSIFICATION_MODEL } from './llm.constants';
 import { LlmOutputError } from './llm.errors';
+import type { RunContext } from '../../observability/trace-step';
+import type { ObsEmitterPort } from '../../observability/observability.constants';
+import { OBS_EMITTER } from '../../observability/observability.constants';
 
 export type LlmUsage = {
   tokensIn: number;
@@ -23,6 +26,7 @@ export type LlmClassifyOptions<T> = {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  runCtx?: RunContext;
 };
 
 type AnthropicMessageResponse = {
@@ -57,6 +61,7 @@ export class AnthropicLlmClient implements LlmClient {
   private readonly anthropic: AnthropicLike;
 
   constructor(
+    @Inject(OBS_EMITTER) private readonly obs: ObsEmitterPort,
     @Optional()
     @Inject('ANTHROPIC_SDK_CLIENT')
     client?: AnthropicLike,
@@ -74,19 +79,43 @@ export class AnthropicLlmClient implements LlmClient {
   ): Promise<LlmClassifyResult<T>> {
     const startedAt = Date.now();
     const model = opts.model ?? CLASSIFICATION_MODEL;
+    const ctx = opts.runCtx;
 
-    const response = await this.anthropic.messages.create({
-      model,
-      max_tokens: opts.maxTokens ?? 220,
-      temperature: opts.temperature ?? 0,
-      system: opts.systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: opts.userPrompt ?? input,
-        },
-      ],
-    });
+    let stepId: string | undefined;
+    if (ctx) {
+      stepId = this.obs.newStepId();
+      this.obs.stepStart({
+        runId: ctx.runId,
+        stepId,
+        index: ctx.stepIndex++,
+        name: 'llm.classify',
+        tool: `anthropic.${model}`,
+        input: { promptChars: (opts.userPrompt ?? input).length, model },
+      });
+    }
+
+    let response: AnthropicMessageResponse;
+    try {
+      response = await this.anthropic.messages.create({
+        model,
+        max_tokens: opts.maxTokens ?? 220,
+        temperature: opts.temperature ?? 0,
+        system: opts.systemPrompt,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: opts.userPrompt ?? input }],
+      });
+    } catch (err) {
+      if (ctx && stepId) {
+        this.obs.stepEnd({
+          runId: ctx.runId,
+          stepId,
+          status: 'error',
+          output: { error: err instanceof Error ? err.message : 'unknown' },
+          latencyMs: Date.now() - startedAt,
+        });
+      }
+      throw err;
+    }
 
     const latencyMs = Date.now() - startedAt;
     const firstText = response.content?.find(
@@ -95,6 +124,15 @@ export class AnthropicLlmClient implements LlmClient {
     );
 
     if (!firstText || firstText.type !== 'text' || !firstText.text) {
+      if (ctx && stepId) {
+        this.obs.stepEnd({
+          runId: ctx.runId,
+          stepId,
+          status: 'error',
+          output: { error: 'no text content' },
+          latencyMs,
+        });
+      }
       throw new LlmOutputError('LLM output did not contain text content');
     }
 
@@ -113,23 +151,60 @@ export class AnthropicLlmClient implements LlmClient {
     try {
       parsedJson = JSON.parse(jsonText);
     } catch (error) {
+      if (ctx && stepId) {
+        this.obs.stepEnd({
+          runId: ctx.runId,
+          stepId,
+          status: 'error',
+          output: { error: 'invalid JSON' },
+          latencyMs,
+        });
+      }
       throw new LlmOutputError('LLM output was not valid JSON', error, stripped);
     }
 
     const parsed = opts.schema.safeParse(parsedJson);
     if (!parsed.success) {
+      if (ctx && stepId) {
+        this.obs.stepEnd({
+          runId: ctx.runId,
+          stepId,
+          status: 'error',
+          output: { error: 'schema validation failed' },
+          latencyMs,
+        });
+      }
       throw new LlmOutputError(
         `LLM output failed schema validation: ${z.prettifyError(parsed.error)}`,
         parsed.error,
       );
     }
 
+    const usage = {
+      tokensIn: response.usage?.input_tokens ?? 0,
+      tokensOut: response.usage?.output_tokens ?? 0,
+    };
+
+    if (ctx) {
+      ctx.addTokens(usage.tokensIn, usage.tokensOut);
+      if (stepId) {
+        this.obs.stepEnd({
+          runId: ctx.runId,
+          stepId,
+          status: 'ok',
+          output: {
+            model: response.model ?? model,
+            tokensIn: usage.tokensIn,
+            tokensOut: usage.tokensOut,
+          },
+          latencyMs,
+        });
+      }
+    }
+
     return {
       parsed: parsed.data,
-      usage: {
-        tokensIn: response.usage?.input_tokens ?? 0,
-        tokensOut: response.usage?.output_tokens ?? 0,
-      },
+      usage,
       latencyMs,
       model: response.model ?? model,
     };
