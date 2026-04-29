@@ -83,7 +83,7 @@ describe('DraftReplyState', () => {
       userPrompt: string;
     };
     expect(callOpts.model).toBe('claude-sonnet-4-6');
-    expect(callOpts.maxTokens).toBe(200);
+    expect(callOpts.maxTokens).toBe(400);
     expect(callOpts.userPrompt).toContain('Thursday Apr 24, 9:00–10:00 AM');
   });
 

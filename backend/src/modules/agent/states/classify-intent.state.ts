@@ -8,6 +8,7 @@ import {
   type LlmUsage,
 } from '../llm/llm.client';
 import { LlmOutputError } from '../llm/llm.errors';
+import type { RunContext } from '../../observability/trace-step';
 
 const ClassifiedIntentSchema = z.enum([
   'BOOK',
@@ -34,6 +35,7 @@ export type ClassifyIntentInput = {
   messageId: string;
   content: string;
   parentKnown: boolean;
+  runCtx?: RunContext;
 };
 
 export type ClassifyIntentResult = {
@@ -94,6 +96,7 @@ export class ClassifyIntentState {
             ].join('\n'),
             model: CLASSIFICATION_MODEL,
             temperature: 0,
+            runCtx: input.runCtx,
           },
         );
 

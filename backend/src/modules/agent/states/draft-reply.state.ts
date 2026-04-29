@@ -5,12 +5,14 @@ import { DRAFTING_MODEL, LLM_CLIENT } from '../llm/llm.constants';
 import type { LlmClient, LlmUsage } from '../llm/llm.client';
 import { LlmOutputError } from '../llm/llm.errors';
 import type { AgentContext } from './load-context.state';
+import type { RunContext } from '../../observability/trace-step';
 
 export type DraftReplyInput = {
   message: Message;
   context: AgentContext;
   intent: Intent;
   tier: ConfidenceTier;
+  runCtx?: RunContext;
 };
 
 export type DraftReplyResult = {
@@ -102,6 +104,7 @@ export class DraftReplyState {
         model: DRAFTING_MODEL,
         maxTokens: 400,
         temperature: 0.3,
+        runCtx: input.runCtx,
       });
     } catch (err) {
       // If the model returned plain prose instead of JSON, use it directly as the reply
