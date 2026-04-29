@@ -14,6 +14,7 @@ export async function createObsEmitter(
     return new NoopObsEmitter();
   }
 
+  // Jest ESM workaround: avoid importing SDK during tests (not business logic).
   if (process.env.JEST_WORKER_ID) {
     logger.log({ event: 'OBS_DISABLED_TEST' });
     return new NoopObsEmitter();
