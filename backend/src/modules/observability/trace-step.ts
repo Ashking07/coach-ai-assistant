@@ -98,6 +98,7 @@ export async function traceRun<T>(
       totals: { tokens: ctx.totalTokens, cost_usd: ctx.totalCostUsd },
       output: summarize(asRecord(result)),
     });
+    void emitter.flush();
     return result;
   } catch (err) {
     emitter.runEnd({
@@ -106,6 +107,7 @@ export async function traceRun<T>(
       totals: { tokens: ctx.totalTokens, cost_usd: ctx.totalCostUsd },
       output: { error: errorMessage(err) },
     });
+    void emitter.flush();
     throw err;
   }
 }
