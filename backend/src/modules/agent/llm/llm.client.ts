@@ -101,7 +101,6 @@ export class AnthropicLlmClient implements LlmClient {
         max_tokens: opts.maxTokens ?? 220,
         temperature: opts.temperature ?? 0,
         system: opts.systemPrompt,
-        response_format: { type: 'json_object' },
         messages: [{ role: 'user', content: opts.userPrompt ?? input }],
       });
     } catch (err) {
