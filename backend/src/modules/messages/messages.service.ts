@@ -12,6 +12,8 @@ import { DraftReplyState } from '../agent/states/draft-reply.state';
 import { OutboundService } from '../agent/outbound/outbound.service';
 import { validateDraft } from '../agent/states/validate-draft.state';
 import { ConfidenceTier } from '@prisma/client';
+import { OBS_EMITTER, type ObsEmitterPort } from '../observability/observability.constants';
+import { traceRun, traceStep } from '../observability/trace-step';
 
 export type IngestResult =
   | { messageId: string; duplicate: false; enqueued: true; jobId: string }
@@ -24,6 +26,7 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(TEST_JOB_QUEUE) private readonly queue: Queue,
+    @Inject(OBS_EMITTER) private readonly obs: ObsEmitterPort,
     private readonly classifyIntentState: ClassifyIntentState,
     private readonly loadContextState: LoadContextState,
     private readonly policyGate: PolicyGate,
@@ -147,169 +150,264 @@ export class MessagesService {
     if (existing) {
       return false;
     }
+    return traceRun(
+      this.obs,
+      { runbook: 'agent.message_pipeline', input: { messageId } },
+      async (ctx) => {
+        const message = await traceStep(
+          this.obs,
+          ctx,
+          'load_message',
+          'db.message.findUniqueOrThrow',
+          { messageId },
+          () =>
+            this.prisma.message.findUniqueOrThrow({
+              where: { id: messageId },
+              include: { parent: true },
+            }),
+        );
 
-    const message = await this.prisma.message.findUniqueOrThrow({
-      where: { id: messageId },
-      include: { parent: true },
-    });
+        const markProcessed = () =>
+          this.prisma.message.update({
+            where: { id: message.id },
+            data: { processedAt: new Date() },
+          });
 
-    const markProcessed = () =>
-      this.prisma.message.update({
-        where: { id: message.id },
-        data: { processedAt: new Date() },
-      });
+        // Check if agent is paused
+        const coach = await this.prisma.coach.findUniqueOrThrow({
+          where: { id: message.coachId },
+          select: { agentPaused: true },
+        });
 
-    // Check if agent is paused
-    const coach = await this.prisma.coach.findUniqueOrThrow({
-      where: { id: message.coachId },
-      select: { agentPaused: true },
-    });
+        if (coach.agentPaused) {
+          await this.prisma.agentDecision.create({
+            data: {
+              coachId: message.coachId,
+              messageId: message.id,
+              intent: 'AMBIGUOUS',
+              actionTaken: 'SKIPPED_AGENT_PAUSED',
+            },
+          });
+          await markProcessed();
+          this.logger.log({
+            event: 'AGENT_PAUSED_SKIPPED',
+            messageId,
+            coachId: message.coachId,
+          });
+          return true;
+        }
 
-    if (coach.agentPaused) {
-      await this.prisma.agentDecision.create({
-        data: {
+        // Stage 1: classify
+        let classifyResult: Awaited<
+          ReturnType<ClassifyIntentState['classifyIntent']>
+        >;
+        try {
+          classifyResult = await traceStep(
+            this.obs,
+            ctx,
+            'classify_intent',
+            'agent.classify',
+            {
+              contentChars: message.content.length,
+              parentKnown: message.parent.isVerified,
+            },
+            () =>
+              this.classifyIntentState.classifyIntent({
+                messageId: message.id,
+                content: message.content,
+                parentKnown: message.parent.isVerified,
+                runCtx: ctx,
+              }),
+          );
+        } catch (error) {
+          await this.outboundService.escalate({
+            coachId: message.coachId,
+            messageId: message.id,
+            reason: this.formatError(error),
+            actionTaken: 'CLASSIFY_FAILED',
+            classifyResult: undefined,
+          });
+          await markProcessed();
+          return true;
+        }
+
+        // Stage 2: load context
+        const context = await traceStep(
+          this.obs,
+          ctx,
+          'load_context',
+          'agent.load_context',
+          { parentId: message.parentId },
+          () => this.loadContextState.loadContext(message.parentId, message.coachId),
+        );
+
+        // Stage 3: policy gate
+        const policyViolation = await traceStep(
+          this.obs,
+          ctx,
+          'policy_gate',
+          'agent.policy_gate',
+          { intent: classifyResult.intent },
+          async () =>
+            this.policyGate.check({
+              intent: classifyResult.intent,
+              content: message.content,
+              parentKnown: message.parent.isVerified,
+            }),
+        );
+        if (policyViolation) {
+          await traceStep(
+            this.obs,
+            ctx,
+            'escalate_policy',
+            'agent.outbound.escalate',
+            { reason: policyViolation.reason },
+            () =>
+              this.outboundService.escalate({
+                coachId: message.coachId,
+                messageId: message.id,
+                reason: policyViolation.reason,
+                actionTaken: 'ESCALATED',
+                classifyResult,
+              }),
+          );
+          await markProcessed();
+          return true;
+        }
+
+        // Stage 4: confidence gate
+        let tier = await traceStep(
+          this.obs,
+          ctx,
+          'confidence_gate',
+          'agent.confidence_gate',
+          { intent: classifyResult.intent, confidence: classifyResult.confidence },
+          async () =>
+            this.confidenceGate.determine({
+              intent: classifyResult.intent,
+              confidence: classifyResult.confidence,
+              parentKnown: message.parent.isVerified,
+              hasAvailableSlots: context.availableSlots.length > 0,
+            }),
+        );
+
+        // Stage 5: draft
+        let draftResult: Awaited<ReturnType<DraftReplyState['draft']>>;
+        try {
+          draftResult = await traceStep(
+            this.obs,
+            ctx,
+            'draft_reply',
+            'agent.draft',
+            { tier, intent: classifyResult.intent },
+            () =>
+              this.draftReplyState.draft({
+                message,
+                intent: classifyResult.intent,
+                tier,
+                context,
+                runCtx: ctx,
+              }),
+          );
+        } catch (error) {
+          await this.outboundService.escalate({
+            coachId: message.coachId,
+            messageId: message.id,
+            reason: this.formatError(error),
+            actionTaken: 'DRAFT_FAILED',
+            classifyResult,
+          });
+          await markProcessed();
+          return true;
+        }
+
+        // Stage 6: validate draft (hallucination backstop)
+        const validation = await traceStep(
+          this.obs,
+          ctx,
+          'validate_draft',
+          'agent.validate',
+          { tier },
+          async () =>
+            validateDraft({
+              draft: draftResult.draft,
+              availableSlots: context.availableSlots,
+              tier,
+              intent: classifyResult.intent,
+            }),
+        );
+        if (validation.downgraded) {
+          tier = validation.tier;
+        }
+
+        // Stage 7: send / queue / escalate
+        const outboundParams = {
           coachId: message.coachId,
           messageId: message.id,
-          intent: 'AMBIGUOUS',
-          actionTaken: 'SKIPPED_AGENT_PAUSED',
-        },
-      });
-      await markProcessed();
-      this.logger.log({ event: 'AGENT_PAUSED_SKIPPED', messageId, coachId: message.coachId });
-      return true;
-    }
-
-    // Stage 1: classify
-    let classifyResult: Awaited<
-      ReturnType<ClassifyIntentState['classifyIntent']>
-    >;
-    try {
-      classifyResult = await this.classifyIntentState.classifyIntent({
-        messageId: message.id,
-        content: message.content,
-        parentKnown: message.parent.isVerified,
-      });
-    } catch (error) {
-      await this.outboundService.escalate({
-        coachId: message.coachId,
-        messageId: message.id,
-        reason: this.formatError(error),
-        actionTaken: 'CLASSIFY_FAILED',
-        classifyResult: undefined,
-      });
-      await markProcessed();
-      return true;
-    }
-
-    // Stage 2: load context
-    const context = await this.loadContextState.loadContext(
-      message.parentId,
-      message.coachId,
-    );
-
-    // Stage 3: policy gate
-    const policyViolation = this.policyGate.check({
-      intent: classifyResult.intent,
-      content: message.content,
-      parentKnown: message.parent.isVerified,
-    });
-    if (policyViolation) {
-      await this.outboundService.escalate({
-        coachId: message.coachId,
-        messageId: message.id,
-        reason: policyViolation.reason,
-        actionTaken: 'ESCALATED',
-        classifyResult,
-      });
-      await markProcessed();
-      return true;
-    }
-
-    // Stage 4: confidence gate
-    let tier = this.confidenceGate.determine({
-      intent: classifyResult.intent,
-      confidence: classifyResult.confidence,
-      parentKnown: message.parent.isVerified,
-      hasAvailableSlots: context.availableSlots.length > 0,
-    });
-
-    // Stage 5: draft
-    let draftResult: Awaited<ReturnType<DraftReplyState['draft']>>;
-    try {
-      draftResult = await this.draftReplyState.draft({
-        message,
-        intent: classifyResult.intent,
-        tier,
-        context,
-      });
-    } catch (error) {
-      await this.outboundService.escalate({
-        coachId: message.coachId,
-        messageId: message.id,
-        reason: this.formatError(error),
-        actionTaken: 'DRAFT_FAILED',
-        classifyResult,
-      });
-      await markProcessed();
-      return true;
-    }
-
-    // Stage 6: validate draft (hallucination backstop)
-    const validation = validateDraft({
-      draft: draftResult.draft,
-      availableSlots: context.availableSlots,
-      tier,
-      intent: classifyResult.intent,
-    });
-    if (validation.downgraded) {
-      tier = validation.tier;
-    }
-
-    // Stage 7: send
-    const outboundParams = {
-      coachId: message.coachId,
-      messageId: message.id,
-      parentId: message.parentId,
-      channel: message.channel,
-      classifyResult,
-      draftResult,
-    };
-    // Capture parent notes onto the next upcoming session regardless of send tier
-    if (draftResult.sessionNote) {
-      await this.appendSessionNote(
-        message.coachId,
-        context.kids,
-        draftResult.sessionNote,
-      );
-    }
-
-    try {
-      if (tier === ConfidenceTier.AUTO) {
-        await this.outboundService.autoSend(outboundParams);
-        // If the agent confirmed a booking, create the session and consume the slot
-        if (classifyResult.intent === 'BOOK' && draftResult.bookedSlotIso) {
-          await this.confirmBooking(
+          parentId: message.parentId,
+          channel: message.channel,
+          classifyResult,
+          draftResult,
+        };
+        // Capture parent notes onto the next upcoming session regardless of send tier
+        if (draftResult.sessionNote) {
+          await this.appendSessionNote(
             message.coachId,
-            message.parentId,
             context.kids,
-            draftResult.bookedSlotIso,
+            draftResult.sessionNote,
           );
         }
-      } else {
-        await this.outboundService.queueForApproval(outboundParams);
-      }
-    } catch (error) {
-      await this.outboundService.escalate({
-        coachId: message.coachId,
-        messageId: message.id,
-        reason: this.formatError(error),
-        actionTaken: 'SEND_FAILED',
-        classifyResult,
-      });
-    }
 
-    await markProcessed();
-    return true;
+        try {
+          if (tier === ConfidenceTier.AUTO) {
+            await traceStep(
+              this.obs,
+              ctx,
+              'auto_send',
+              'agent.outbound.auto_send',
+              { channel: message.channel },
+              () => this.outboundService.autoSend(outboundParams),
+            );
+            if (classifyResult.intent === 'BOOK' && draftResult.bookedSlotIso) {
+              await traceStep(
+                this.obs,
+                ctx,
+                'confirm_booking',
+                'db.session.create',
+                { bookedSlotIso: draftResult.bookedSlotIso },
+                () =>
+                  this.confirmBooking(
+                    message.coachId,
+                    message.parentId,
+                    context.kids,
+                    draftResult.bookedSlotIso!,
+                  ),
+              );
+            }
+          } else {
+            await traceStep(
+              this.obs,
+              ctx,
+              'queue_for_approval',
+              'agent.outbound.queue_for_approval',
+              { tier },
+              () => this.outboundService.queueForApproval(outboundParams),
+            );
+          }
+        } catch (error) {
+          await this.outboundService.escalate({
+            coachId: message.coachId,
+            messageId: message.id,
+            reason: this.formatError(error),
+            actionTaken: 'SEND_FAILED',
+            classifyResult,
+          });
+        }
+
+        await markProcessed();
+        return true;
+      },
+    );
   }
 
   private async confirmBooking(

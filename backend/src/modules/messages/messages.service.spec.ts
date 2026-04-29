@@ -10,6 +10,11 @@ import { ConfidenceGate } from '../agent/gates/confidence-gate';
 import { DraftReplyState } from '../agent/states/draft-reply.state';
 import { OutboundService } from '../agent/outbound/outbound.service';
 import { ConfidenceTier } from '@prisma/client';
+import { NoopObsEmitter } from '../observability/noop-emitter';
+import {
+  OBS_EMITTER,
+  type ObsEmitterPort,
+} from '../observability/observability.constants';
 
 const baseMsg: ParentMessage = {
   coachId: 'demo-coach',
@@ -66,6 +71,7 @@ describe('MessagesService.ingest', () => {
         { provide: ConfidenceGate, useValue: { determine: jest.fn() } },
         { provide: DraftReplyState, useValue: { draft: jest.fn() } },
         { provide: OutboundService, useValue: makeOutboundMock() },
+        { provide: OBS_EMITTER, useValue: new NoopObsEmitter() },
       ],
     }).compile();
     service = moduleRef.get<MessagesService>(MessagesService);
@@ -203,11 +209,12 @@ describe('MessagesService.ingest', () => {
 
 function makeProcessPrismaMock() {
   return {
-    agentDecision: { findFirst: jest.fn() },
+    agentDecision: { findFirst: jest.fn(), create: jest.fn() },
     message: {
       findUniqueOrThrow: jest.fn(),
       update: jest.fn().mockResolvedValue({}),
     },
+    coach: { findUniqueOrThrow: jest.fn() },
   };
 }
 
@@ -267,6 +274,7 @@ describe('MessagesService.processIngestedMessage', () => {
   let confidenceMock: { determine: jest.Mock };
   let draftMock: { draft: jest.Mock };
   let outboundMock: ReturnType<typeof makeOutboundMock>;
+  let obsEmitter: ObsEmitterPort;
 
   beforeEach(async () => {
     prisma = makeProcessPrismaMock();
@@ -278,6 +286,8 @@ describe('MessagesService.processIngestedMessage', () => {
     };
     draftMock = { draft: jest.fn() };
     outboundMock = makeOutboundMock();
+    obsEmitter = new NoopObsEmitter();
+    prisma.coach.findUniqueOrThrow.mockResolvedValue({ agentPaused: false });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -290,6 +300,7 @@ describe('MessagesService.processIngestedMessage', () => {
         { provide: ConfidenceGate, useValue: confidenceMock },
         { provide: DraftReplyState, useValue: draftMock },
         { provide: OutboundService, useValue: outboundMock },
+        { provide: OBS_EMITTER, useValue: obsEmitter },
       ],
     }).compile();
 
@@ -430,5 +441,69 @@ describe('MessagesService.processIngestedMessage', () => {
     // Saturday and 3:00 not in slot label → downgraded to APPROVE
     expect(outboundMock.queueForApproval).toHaveBeenCalled();
     expect(outboundMock.autoSend).not.toHaveBeenCalled();
+  });
+
+  it('emits one run with ordered steps', async () => {
+    class RecordingObsEmitter implements ObsEmitterPort {
+      starts: any[] = [];
+      ends: any[] = [];
+      runStarts: any[] = [];
+      runEnds: any[] = [];
+      newRunId() {
+        return 'run_t';
+      }
+      newStepId() {
+        return `step_${this.starts.length}`;
+      }
+      runStart(p: any) {
+        this.runStarts.push(p);
+      }
+      runEnd(p: any) {
+        this.runEnds.push(p);
+      }
+      stepStart(p: any) {
+        this.starts.push(p);
+      }
+      stepEnd(p: any) {
+        this.ends.push(p);
+      }
+      async flush() {}
+    }
+
+    const obs = new RecordingObsEmitter();
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: TEST_JOB_QUEUE, useValue: { add: jest.fn() } },
+        { provide: ClassifyIntentState, useValue: classifyMock },
+        { provide: LoadContextState, useValue: contextMock },
+        { provide: PolicyGate, useValue: policyMock },
+        { provide: ConfidenceGate, useValue: confidenceMock },
+        { provide: DraftReplyState, useValue: draftMock },
+        { provide: OutboundService, useValue: outboundMock },
+        { provide: OBS_EMITTER, useValue: obs },
+      ],
+    }).compile();
+
+    const obsService = moduleRef.get<MessagesService>(MessagesService);
+
+    prisma.agentDecision.findFirst.mockResolvedValue(null);
+    prisma.message.findUniqueOrThrow.mockResolvedValue(makeMessage());
+    classifyMock.classifyIntent.mockResolvedValue(CLASSIFY_RESULT);
+    contextMock.loadContext.mockResolvedValue(CONTEXT_WITH_SLOTS);
+    confidenceMock.determine.mockReturnValue(ConfidenceTier.AUTO);
+    draftMock.draft.mockResolvedValue(DRAFT_RESULT);
+
+    await obsService.processIngestedMessage('msg-1');
+
+    expect(obs.runStarts).toHaveLength(1);
+    expect(obs.runEnds).toHaveLength(1);
+    const stepNames = obs.starts.map((s) => s.name);
+    expect(stepNames).toContain('classify_intent');
+    expect(stepNames).toContain('confidence_gate');
+    expect(stepNames).toContain('draft_reply');
+    const indices = obs.starts.map((s) => s.index);
+    expect([...indices].sort((a, b) => a - b)).toEqual(indices);
   });
 });
