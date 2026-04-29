@@ -10,6 +10,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { TwilioModule } from './modules/twilio/twilio.module';
 import { DemoChatModule } from './modules/demo-chat/demo-chat.module';
 import { VoiceModule } from './modules/voice/voice.module';
+import { ObservabilityModule } from './modules/observability/observability.module';
 import { validateEnv } from './common/env.validation';
 
 @Module({
@@ -18,6 +19,7 @@ import { validateEnv } from './common/env.validation';
       isGlobal: true,
       ignoreEnvFile: true,
     }),
+    ObservabilityModule,
     BullMqModule,
     PrismaModule,
     AgentModule,
