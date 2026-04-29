@@ -40,6 +40,9 @@ importers:
       '@prisma/client':
         specifier: ^7.7.0
         version: 7.7.0(prisma@7.7.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3))(typescript@5.9.3)
+      '@veriops/sdk-js':
+        specifier: ^0.1.8
+        version: 0.1.8
       bullmq:
         specifier: ^5.75.2
         version: 5.75.2
@@ -1653,6 +1656,10 @@ packages:
     resolution: {integrity: sha512-lrW200hZdbfRtztbygyaq/6jP6AKE8qQN2KvPcJ+x7wiD038YtnYtZ82IMNJ69GJibV7bwL3y9FgK+5w/pYt6g==}
     cpu: [x64]
     os: [win32]
+
+  '@veriops/sdk-js@0.1.8':
+    resolution: {integrity: sha512-rr/8Rqp4RiDUNKl8ZfpZDBN2zC5/wHG19n5d2gy6KtF+lSyMYIOCNnLwvl+k5kBWkn3JK8FlpJtI7K8a6In9fg==}
+    engines: {node: '>=18'}
 
   '@vitejs/plugin-react@6.0.1':
     resolution: {integrity: sha512-l9X/E3cDb+xY3SWzlG1MOGt2usfEHGMNIaegaUGFsLkb3RCn/k8/TOXBcab+OndDI4TBtktT8/9BwwW8Vi9KUQ==}
@@ -5948,6 +5955,8 @@ snapshots:
 
   '@unrs/resolver-binding-win32-x64-msvc@1.11.1':
     optional: true
+
+  '@veriops/sdk-js@0.1.8': {}
 
   '@vitejs/plugin-react@6.0.1(vite@8.0.9(@types/node@24.12.2)(jiti@2.6.1)(terser@5.46.1))':
     dependencies:

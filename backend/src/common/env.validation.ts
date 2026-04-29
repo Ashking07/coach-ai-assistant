@@ -31,6 +31,10 @@ const EnvSchema = z.object({
   DEMO_TOKEN_SECRET: z.string().optional(),
   VOICE_ENABLED: BoolFlagSchema,
   GEMINI_API_KEY: z.string().min(1).optional(),
+  VERIOPS_ENABLED: BoolFlagSchema,
+  OBS_BASE_URL: z.string().url().optional(),
+  OBS_API_KEY: z.string().min(1).optional(),
+  OBS_PROJECT_ID: z.string().min(1).optional(),
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
@@ -90,6 +94,30 @@ const EnvSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['GEMINI_API_KEY'],
         message: 'GEMINI_API_KEY is required when VOICE_ENABLED is true',
+      });
+    }
+  }
+
+  if (env.VERIOPS_ENABLED) {
+    if (!env.OBS_BASE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OBS_BASE_URL'],
+        message: 'OBS_BASE_URL is required when VERIOPS_ENABLED is true',
+      });
+    }
+    if (!env.OBS_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OBS_API_KEY'],
+        message: 'OBS_API_KEY is required when VERIOPS_ENABLED is true',
+      });
+    }
+    if (!env.OBS_PROJECT_ID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OBS_PROJECT_ID'],
+        message: 'OBS_PROJECT_ID is required when VERIOPS_ENABLED is true',
       });
     }
   }

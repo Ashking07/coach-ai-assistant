@@ -105,3 +105,52 @@ describe('voice config', () => {
     expect(env.VOICE_ENABLED).toBe(false);
   });
 });
+
+describe('veriops config', () => {
+  const baseEnv = {
+    DATABASE_URL: 'postgresql://localhost:5433/coach_local',
+    ANTHROPIC_API_KEY: 'sk-ant-test',
+    INTERNAL_INGEST_TOKEN: '0123456789abcdef0123',
+    DASHBOARD_TOKEN: '0123456789abcdef0123',
+    COACH_ID: 'coach_1',
+  };
+
+  it('rejects VERIOPS_ENABLED=true without OBS_API_KEY', () => {
+    expect(() =>
+      validateEnv({
+        ...baseEnv,
+        VERIOPS_ENABLED: 'true',
+        OBS_BASE_URL: 'https://veriops-api.onrender.com',
+        OBS_PROJECT_ID: 'demo',
+      }),
+    ).toThrow(/OBS_API_KEY/);
+  });
+
+  it('rejects VERIOPS_ENABLED=true without OBS_PROJECT_ID', () => {
+    expect(() =>
+      validateEnv({
+        ...baseEnv,
+        VERIOPS_ENABLED: 'true',
+        OBS_BASE_URL: 'https://veriops-api.onrender.com',
+        OBS_API_KEY: 'cbe43105ad6bad8bd146ab27d12a0b22e',
+      }),
+    ).toThrow(/OBS_PROJECT_ID/);
+  });
+
+  it('accepts a complete VeriOps config', () => {
+    const env = validateEnv({
+      ...baseEnv,
+      VERIOPS_ENABLED: 'true',
+      OBS_BASE_URL: 'https://veriops-api.onrender.com',
+      OBS_API_KEY: 'cbe43105ad6bad8bd146ab27d12a0b22e',
+      OBS_PROJECT_ID: 'demo',
+    });
+    expect(env.VERIOPS_ENABLED).toBe(true);
+    expect(env.OBS_PROJECT_ID).toBe('demo');
+  });
+
+  it('defaults VERIOPS_ENABLED to false', () => {
+    const env = validateEnv(baseEnv);
+    expect(env.VERIOPS_ENABLED).toBe(false);
+  });
+});
