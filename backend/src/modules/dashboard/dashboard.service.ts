@@ -9,6 +9,21 @@ import type { LlmClient } from '../agent/llm/llm.client';
 import { OBS_EMITTER, type ObsEmitterPort } from '../observability/observability.constants';
 import { traceRun, traceStep } from '../observability/trace-step';
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function todayBoundsForTZ(tz: string): { start: Date; end: Date } {
+  const now = new Date();
+  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+  // Compute the UTC offset for this timezone right now (handles DST automatically)
+  const utcMs = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
+  const tzMs = new Date(now.toLocaleString('en-US', { timeZone: tz })).getTime();
+  const offsetMs = utcMs - tzMs;
+  return {
+    start: new Date(new Date(`${dateStr}T00:00:00`).getTime() + offsetMs),
+    end: new Date(new Date(`${dateStr}T23:59:59.999`).getTime() + offsetMs),
+  };
+}
+
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
 export interface FireDto {
@@ -191,11 +206,7 @@ export class DashboardService {
         orderBy: { createdAt: 'desc' },
       }),
       (() => {
-        // Uses server timezone (UTC in prod); coach timezone alignment is a future improvement
-        const start = new Date();
-        start.setHours(0, 0, 0, 0);
-        const end = new Date();
-        end.setHours(23, 59, 59, 999);
+        const { start, end } = todayBoundsForTZ('America/Los_Angeles');
         return this.prisma.session.findMany({
           where: {
             coachId,
