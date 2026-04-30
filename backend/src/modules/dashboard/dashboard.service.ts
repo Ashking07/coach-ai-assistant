@@ -769,7 +769,7 @@ export class DashboardService {
     }
 
     const schemas = z.object({
-      recap: z.string().transform((s) => s.slice(0, 300)),
+      recap: z.string().transform((s) => s.slice(0, 480)),
     });
 
     const sessionDate = new Intl.DateTimeFormat('en-US', {
@@ -780,21 +780,24 @@ export class DashboardService {
     }).format(session.scheduledAt);
 
     const systemPrompt = `
-You are drafting a parent-friendly session recap from a coach's voice notes.
-Tone: warm, encouraging, brief, non-jargon.
+You are drafting a text message FROM the coach TO the parent after a training session.
+Tone: warm, personal, encouraging, conversational — like a text from a trusted coach.
 Rules:
+- Write in first person as the coach ("Great session today...", "Just wanted to share...").
+- Address the parent by their first name at the start.
 - 2–3 sentences maximum.
-- Focus on the child's progress and highlights.
-- End positively.
-- Do not reference the coach's internal notes or private observations.
+- Focus on the child's highlights and progress.
+- End on a positive, forward-looking note.
+- Never mention internal notes, pricing, or anything not suitable to send directly.
 `.trim();
 
+    const parentFirstName = session.kid.parent.name.split(' ')[0];
     const userPrompt = [
       `Session date: ${sessionDate}`,
-      `Child: ${session.kid.name}`,
+      `Child's name: ${session.kid.name}`,
       `Duration: ${session.durationMinutes} minutes`,
-      `Coach's notes: ${transcript}`,
-      `Draft a parent-friendly recap for ${session.kid.parent.name}.`,
+      `Coach's voice note: ${transcript}`,
+      `Write the text message from the coach to ${parentFirstName} (parent of ${session.kid.name}).`,
       `Respond with JSON: { "recap": "..." }`,
     ].join('\n');
 
