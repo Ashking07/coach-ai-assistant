@@ -157,22 +157,26 @@ export function toolCallToProposal(
   name: string,
   args: Record<string, unknown>,
 ): CoachCommandProposal | null {
-  switch (name) {
-    case 'approve_pending':
-      return CoachCommandProposalSchema.parse({ kind: 'APPROVE_PENDING', ...args });
-    case 'dismiss_pending':
-      return CoachCommandProposalSchema.parse({ kind: 'DISMISS_PENDING', ...args });
-    case 'draft_reply':
-      return CoachCommandProposalSchema.parse({ kind: 'DRAFT_REPLY', ...args });
-    case 'block_availability':
-      return CoachCommandProposalSchema.parse({ kind: 'BLOCK_AVAILABILITY', ...args });
-    case 'cancel_session':
-      return CoachCommandProposalSchema.parse({ kind: 'CANCEL_SESSION', ...args });
-    case 'schedule_session':
-      return CoachCommandProposalSchema.parse({ kind: 'SCHEDULE_SESSION', ...args });
-    case 'add_availability':
-      return CoachCommandProposalSchema.parse({ kind: 'ADD_AVAILABILITY', ...args });
-    default:
-      return null;
+  const kindMap: Record<string, string> = {
+    approve_pending: 'APPROVE_PENDING',
+    dismiss_pending: 'DISMISS_PENDING',
+    draft_reply: 'DRAFT_REPLY',
+    block_availability: 'BLOCK_AVAILABILITY',
+    cancel_session: 'CANCEL_SESSION',
+    schedule_session: 'SCHEDULE_SESSION',
+    add_availability: 'ADD_AVAILABILITY',
+  };
+  const kind = kindMap[name];
+  if (!kind) return null;
+
+  const result = CoachCommandProposalSchema.safeParse({ kind, ...args });
+  if (!result.success) {
+    console.error('[toolCallToProposal] schema validation failed', {
+      tool: name,
+      args,
+      issues: result.error.issues,
+    });
+    return null;
   }
+  return result.data;
 }

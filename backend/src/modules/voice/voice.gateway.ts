@@ -141,6 +141,20 @@ export class VoiceGateway implements OnModuleDestroy {
     context: GeminiLiveContext,
   ): Promise<void> {
     const contextBlock = this.renderContext(context);
+    const nowLA = new Date().toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      weekday: 'long', month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+    const defaultTimeLA = (() => {
+      const d = new Date();
+      d.setMinutes(0, 0, 0);
+      d.setHours(d.getHours() + 1);
+      return d.toLocaleTimeString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+      });
+    })();
     const today = new Intl.DateTimeFormat('en-US', {
       weekday: 'long', month: 'short', day: 'numeric', year: 'numeric',
     }).format(new Date());
@@ -163,7 +177,7 @@ export class VoiceGateway implements OnModuleDestroy {
         {
           model: 'claude-sonnet-4-6',
           max_tokens: 512,
-          system: `${SYSTEM_PROMPT}\n\nToday: ${today}\n\n${contextBlock}`,
+          system: `${SYSTEM_PROMPT}\n\nCurrent time (LA): ${nowLA}\nDefault time when none given: ${defaultTimeLA}\nIMPORTANT: startAtIso and endAtIso MUST be full ISO 8601 with America/Los_Angeles offset, e.g. "2026-04-30T15:00:00-07:00". Never use bare dates or Z suffix.\n\nToday: ${today}\n\n${contextBlock}`,
           tools,
           tool_choice: { type: 'auto' },
           messages: [{ role: 'user', content: transcript }],
