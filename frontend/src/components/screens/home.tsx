@@ -6,7 +6,6 @@ import { T } from '../../tokens';
 import { FireCard, ApprovalCard } from '../cards';
 import { ApprovalDetail } from '../approval-detail';
 import { IntentBadge } from '../badges';
-import { DemoQRCard } from '../demo-qr-card';
 import { WeekView } from '../week-view';
 import { VoiceButton } from '../voice/voice-button';
 
@@ -408,10 +407,6 @@ export function HomeScreen({
           <AutoHandledSection data={data.autoHandled} />
         </>
       )}
-
-      {/* Demo QR */}
-      <SectionLabel>Demo.</SectionLabel>
-      <DemoQRCard />
 
       {/* Approval detail overlay */}
       {activeFire && (
