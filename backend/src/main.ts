@@ -14,8 +14,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const allowedOrigins = (
-    process.env.CORS_ORIGIN ??
-    'http://localhost:5173,http://localhost:5174,https://coach-ai-assistant-backend.onrender.com'
+    process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:5174'
   )
     .split(',')
     .map((origin) => origin.trim())
@@ -25,6 +24,7 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
   });
+  console.log(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
 
   const gateway = app.get(DemoWebChatGateway);
   const httpServer = app.getHttpServer() as import('node:http').Server;

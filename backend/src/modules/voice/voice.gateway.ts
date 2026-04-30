@@ -39,17 +39,24 @@ APPROVALS: "the first one" / "top one" / "that one" = use first approvalId in co
 SESSIONS: for cancel/schedule, match session or kid from context.
 `.trim();
 
+const VOICE_CLAUDE_TIMEOUT_MS = 30_000;
+
 @Injectable()
 export class VoiceGateway implements OnModuleDestroy {
   private readonly logger = new Logger(VoiceGateway.name);
   private wsServer: WebSocketServer | null = null;
   private readonly clients = new Set<WebSocket>();
+  private readonly anthropic: Anthropic;
 
   constructor(
     private readonly config: ConfigService,
     private readonly commands: CoachCommandService,
     private readonly dashboard: DashboardService,
-  ) {}
+  ) {
+    this.anthropic = new Anthropic({
+      apiKey: this.config.getOrThrow<string>('ANTHROPIC_API_KEY'),
+    });
+  }
 
   attachToHttpServer(server: HttpServer): void {
     if (this.wsServer) return;
@@ -148,19 +155,21 @@ export class VoiceGateway implements OnModuleDestroy {
       },
     }));
 
-    try {
-      const anthropic = new Anthropic({
-        apiKey: this.config.getOrThrow<string>('ANTHROPIC_API_KEY'),
-      });
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), VOICE_CLAUDE_TIMEOUT_MS);
 
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 512,
-        system: `${SYSTEM_PROMPT}\n\nToday: ${today}\n\n${contextBlock}`,
-        tools,
-        tool_choice: { type: 'auto' },
-        messages: [{ role: 'user', content: transcript }],
-      });
+    try {
+      const response = await this.anthropic.messages.create(
+        {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 512,
+          system: `${SYSTEM_PROMPT}\n\nToday: ${today}\n\n${contextBlock}`,
+          tools,
+          tool_choice: { type: 'auto' },
+          messages: [{ role: 'user', content: transcript }],
+        },
+        { signal: abort.signal },
+      );
 
       const toolUse = response.content.find((b) => b.type === 'tool_use');
       if (!toolUse || toolUse.type !== 'tool_use') {
@@ -181,6 +190,7 @@ export class VoiceGateway implements OnModuleDestroy {
       }
 
       const stored = this.commands.storeProposal(coachId, proposal);
+      this.logger.log({ event: 'VOICE_PROPOSAL_STORED', id: stored.id, tool: toolUse.name });
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'proposal',
@@ -190,10 +200,13 @@ export class VoiceGateway implements OnModuleDestroy {
         }));
       }
     } catch (err) {
-      this.logger.error({ event: 'VOICE_CLAUDE_FAILED', err });
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      this.logger.error({ event: 'VOICE_CLAUDE_FAILED', timeout: isTimeout, err: err instanceof Error ? err.message : String(err) });
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Command processing failed. Try again.' }));
+        ws.send(JSON.stringify({ type: 'error', message: isTimeout ? 'Command timed out. Try again.' : 'Command processing failed. Try again.' }));
       }
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

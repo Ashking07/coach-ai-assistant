@@ -71,6 +71,9 @@ export class DashboardController {
     @Body() body: unknown,
   ) {
     const draft = (body as Record<string, unknown>)?.draft;
+    if (typeof draft === 'string' && draft.length > 2000) {
+      throw new BadRequestException('draft must be 2000 characters or fewer');
+    }
     return this.dashboardService.sendApproval(
       this.guard(token),
       id,
@@ -99,6 +102,10 @@ export class DashboardController {
     @Headers('x-dashboard-token') token: string | undefined,
     @Query('weekStart') weekStart?: string,
   ) {
+    if (weekStart !== undefined) {
+      const d = new Date(weekStart);
+      if (isNaN(d.getTime())) throw new BadRequestException('Invalid weekStart date');
+    }
     return this.dashboardService.getWeekSessions(this.guard(token), weekStart);
   }
 
@@ -107,6 +114,10 @@ export class DashboardController {
     @Headers('x-dashboard-token') token: string | undefined,
     @Query('weekStart') weekStart?: string,
   ) {
+    if (weekStart !== undefined) {
+      const d = new Date(weekStart);
+      if (isNaN(d.getTime())) throw new BadRequestException('Invalid weekStart date');
+    }
     return this.dashboardService.getAvailability(this.guard(token), weekStart);
   }
 
@@ -146,6 +157,9 @@ export class DashboardController {
     const parsed = body as Record<string, unknown>;
     if (!parsed || typeof parsed.transcript !== 'string') {
       throw new BadRequestException('transcript is required and must be a string');
+    }
+    if (parsed.transcript.length > 8000) {
+      throw new BadRequestException('transcript must be 8000 characters or fewer');
     }
     return this.dashboardService.createSessionRecap(this.guard(token), id, parsed.transcript);
   }

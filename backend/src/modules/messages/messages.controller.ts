@@ -3,6 +3,7 @@ import {
   Controller,
   Headers,
   HttpCode,
+  Logger,
   Post,
   UnauthorizedException,
   UnprocessableEntityException,
@@ -14,6 +15,8 @@ import { timingSafeEqualStr } from '../../common/timing-safe-equal';
 
 @Controller('api/messages')
 export class MessagesController {
+  private readonly logger = new Logger(MessagesController.name);
+
   constructor(
     private readonly messagesService: MessagesService,
     private readonly config: ConfigService,
@@ -32,11 +35,8 @@ export class MessagesController {
 
     const parsed = ParentMessageSchema.safeParse(body);
     if (!parsed.success) {
-      throw new UnprocessableEntityException({
-        statusCode: 422,
-        message: 'Invalid message payload',
-        issues: parsed.error.issues,
-      });
+      this.logger.warn({ event: 'INVALID_MESSAGE_PAYLOAD', issues: parsed.error.issues });
+      throw new UnprocessableEntityException('Invalid message payload');
     }
 
     const result = await this.messagesService.ingest(parsed.data);
