@@ -38,6 +38,32 @@ The web and worker agree on queue identity through `DEV_TEST_QUEUE = 'coach-dev-
 
 `worker.ts` handles `MESSAGE_INGESTED` jobs in a separate process and calls back into `MessagesService` to write the placeholder `AgentDecision` and mark the message processed. It also runs orphan recovery on startup.
 
+### Messaging channels
+
+Inbound webhooks live in `modules/twilio/twilio.controller.ts` (POST `/api/twilio/inbound`) and `modules/telnyx/telnyx.controller.ts` (POST `/api/telnyx/inbound`). Both ingest via `MessagesService` with `channel: 'SMS'`. The `Channel` Prisma enum is `SMS | WEB_CHAT | VOICE` only — there is no `WHATSAPP` value. WhatsApp messages are stored as `SMS`.
+
+Outbound replies are dispatched by `ChannelSenderRegistry` (`modules/agent/channels/channel-sender.registry.ts`), keyed by `Channel`. The registry is built in `channel-sender.module.ts`, which currently wires:
+
+- `TwilioWhatsAppSender` → `Channel.SMS` (active for the demo — sends via Twilio WhatsApp sandbox)
+- `WebChatSender` → `Channel.WEB_CHAT`
+
+Only **one sender per channel** is allowed (the registry is a `Map<Channel, ChannelSender>`). Idle senders kept in the tree but not registered:
+
+- `TelnyxSmsSender` (`modules/agent/channels/telnyx-sms.sender.ts`) — real-SMS path via Telnyx +16573911271
+- `TwilioSmsSender` (`modules/agent/channels/twilio-sms.sender.ts`) — generic Twilio SMS path (uses `TWILIO_PHONE_NUMBER`, no `whatsapp:` prefix)
+
+To switch the active SMS-channel sender, edit the `useFactory` and `inject` arrays in `channel-sender.module.ts`. There is no per-parent dispatch — every reply on `Channel.SMS` goes through whichever sender is registered.
+
+#### Twilio WhatsApp sandbox (demo path)
+
+`TwilioWhatsAppSender` (`modules/agent/channels/twilio-whatsapp.sender.ts`) sends with `whatsapp:` prefix on both `to` and `from`. The `from` address is read from `TWILIO_WHATSAPP_FROM` (default `whatsapp:+14155238886`, the shared Twilio sandbox).
+
+Inbound: Twilio webhooks set `From=whatsapp:+E164`. `TwilioInboundSchema` (`modules/twilio/dto/twilio-inbound.dto.ts`) strips the `whatsapp:` prefix via a Zod transform before E.164 regex validation, so the parent's `phone` is stored clean. The `TwilioSignatureGuard` validates the signature using the raw form params (with prefix intact) before the DTO transform runs.
+
+Sandbox onboarding for parents: each test phone must send `join dirt-iron` to `+1 415 523 8886` from WhatsApp before the bot will see them or be able to reply.
+
+To swap back to real SMS via Telnyx (e.g. for production after WhatsApp Business approval), revert `channel-sender.module.ts` to register `TelnyxSmsSender`.
+
 ### Common backend commands
 
 ```bash
@@ -87,4 +113,6 @@ No test runner is configured on the frontend.
 
 ## Deployment notes
 
-Backend is deployed to Render at `coach-ai-assistant-backend.onrender.com` (hardcoded in the CORS default). Ensure `PORT`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGIN`, `INTERNAL_INGEST_TOKEN`, and `ANTHROPIC_API_KEY` are set in the Render environment — the code relies on env defaults that only make sense locally.
+Backend is deployed to Render at `coach-ai-assistant-backend.onrender.com` (hardcoded in the CORS default). Ensure `PORT`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGIN`, `INTERNAL_INGEST_TOKEN`, `ANTHROPIC_API_KEY`, and (for the WhatsApp demo path) `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` are set in the Render environment — the code relies on env defaults that only make sense locally.
+
+The Twilio sandbox webhook (Twilio Console → WhatsApp → Sandbox settings → "When a message comes in") must point to `https://coach-ai-assistant-backend.onrender.com/api/twilio/inbound`.
