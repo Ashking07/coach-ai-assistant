@@ -410,7 +410,7 @@ export class DashboardService {
       this.obs,
       { runbook: 'coach.approve_pending', input: { coachId, approvalId } },
       async (ctx) => {
-        await traceStep(
+        const updated = await traceStep(
           this.obs,
           ctx,
           'mark_approved',
@@ -425,7 +425,58 @@ export class DashboardService {
                 resolvedAt: new Date(),
                 resolvedBy: 'coach',
               },
+              include: {
+                message: { select: { id: true, parentId: true, channel: true } },
+              },
             }),
+        );
+
+        const content = updated.draftReply;
+        const { parentId, channel } = updated.message;
+        const outboundId = randomUUID();
+
+        await traceStep(
+          this.obs,
+          ctx,
+          'persist_outbound',
+          'db.message.create',
+          { parentId, channel },
+          () =>
+            this.prisma.message.create({
+              data: {
+                coachId,
+                parentId,
+                direction: 'OUTBOUND',
+                channel,
+                providerMessageId: outboundId,
+                content,
+                receivedAt: new Date(),
+              },
+            }),
+        );
+
+        await traceStep(
+          this.obs,
+          ctx,
+          'send_via_channel',
+          'channel.send',
+          { parentId, channel },
+          async () => {
+            const sender = this.channelSenderRegistry.get(channel);
+            const result = await sender.send({
+              coachId,
+              messageId: outboundId,
+              parentId,
+              content,
+            });
+            this.logger.log({
+              event: result.ok ? 'APPROVAL_SENT' : 'APPROVAL_SEND_FAILED',
+              approvalId,
+              parentId,
+              error: result.ok ? undefined : result.error,
+            });
+            return result;
+          },
         );
       },
     );

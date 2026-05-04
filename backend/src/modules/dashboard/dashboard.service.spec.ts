@@ -37,10 +37,27 @@ async function makeService(prisma: ReturnType<typeof makePrismaMock>) {
 }
 
 describe('DashboardService.sendApproval', () => {
-  it('updates approval status to APPROVED with resolvedBy=coach', async () => {
+  it('marks approved, persists outbound, and dispatches via channel sender', async () => {
     const prisma = makePrismaMock();
-    prisma.approvalQueue.update.mockResolvedValue({});
-    const service = await makeService(prisma);
+    prisma.approvalQueue.update.mockResolvedValue({
+      id: 'approval-1',
+      draftReply: 'reply text',
+      message: { id: 'msg-1', parentId: 'parent-1', channel: 'SMS' },
+    });
+    prisma.message.create.mockResolvedValue({ id: 'out-1' });
+    const sendMock = jest.fn().mockResolvedValue({ ok: true });
+    const channelSenderRegistryMock = { get: jest.fn().mockReturnValue({ send: sendMock }) };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        DashboardService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ChannelSenderRegistry, useValue: channelSenderRegistryMock },
+        { provide: LLM_CLIENT, useValue: { classify: jest.fn() } },
+        { provide: OBS_EMITTER, useValue: new NoopObsEmitter() },
+      ],
+    }).compile();
+    const service = moduleRef.get(DashboardService);
 
     await service.sendApproval('coach-1', 'approval-1');
 
@@ -51,7 +68,25 @@ describe('DashboardService.sendApproval', () => {
         resolvedBy: 'coach',
         resolvedAt: expect.any(Date),
       }),
+      include: { message: { select: { id: true, parentId: true, channel: true } } },
     });
+    expect(prisma.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        coachId: 'coach-1',
+        parentId: 'parent-1',
+        direction: 'OUTBOUND',
+        channel: 'SMS',
+        content: 'reply text',
+      }),
+    });
+    expect(channelSenderRegistryMock.get).toHaveBeenCalledWith('SMS');
+    expect(sendMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        coachId: 'coach-1',
+        parentId: 'parent-1',
+        content: 'reply text',
+      }),
+    );
   });
 });
 
