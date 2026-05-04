@@ -18,7 +18,7 @@ import { validateEnv } from './common/env.validation';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      ignoreEnvFile: true,
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
     }),
     ObservabilityModule,
     BullMqModule,
