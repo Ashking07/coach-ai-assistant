@@ -1,4 +1,4 @@
-import { ChevronRight, Mic, Trash2 } from 'lucide-react';
+import { ChevronRight, Mic, Trash2, X } from 'lucide-react';
 import { T } from '../tokens';
 import { IntentBadge, TierBadge } from './badges';
 import { KidAvatar } from './avatar';
@@ -170,6 +170,7 @@ export function SessionCard({
 }) {
   const recap = useRecapRecorder(session.id);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleMicClick = () => {
     setShowOverlay(true);
@@ -179,8 +180,12 @@ export function SessionCard({
   const handleDeleteClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     if (!onDelete) return;
-    const ok = window.confirm(`Cancel ${session.kid}'s ${session.time} session?`);
-    if (ok) onDelete(session.id);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    setShowDeleteConfirm(false);
+    onDelete?.(session.id);
   };
 
   const handleOverlayClose = () => {
@@ -254,6 +259,72 @@ export function SessionCard({
           </div>
         </div>
       </div>
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4 md:p-8"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', zIndex: 80 }}
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative flex flex-col w-full rounded-3xl overflow-hidden"
+            style={{
+              background: '#0E0F0C',
+              border: '1px solid #2A2B27',
+              maxWidth: 420,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div
+              className="sticky top-0 flex items-center justify-between px-5 py-4"
+              style={{ background: 'rgba(14,15,12,0.92)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #2A2B27' }}
+            >
+              <span
+                style={{
+                  fontFamily: 'Geist Mono, monospace',
+                  fontSize: 11,
+                  letterSpacing: '0.1em',
+                  color: '#A8A49B',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Cancel session
+              </span>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="p-2 -mr-2 rounded-full"
+                style={{ color: '#A8A49B', background: 'none', border: 'none', cursor: 'pointer' }}
+                aria-label="Close confirmation"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-5 md:px-6 py-6 flex flex-col gap-4">
+              <div style={{ color: '#F7F3EC', fontSize: 20, fontWeight: 500 }}>Cancel this session?</div>
+              <div style={{ color: '#D4D0C7', fontSize: 14, lineHeight: 1.55 }}>
+                This will cancel {session.kid}'s {session.time} session and remove it from the week view.
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 py-3 rounded-2xl"
+                  style={{ background: 'transparent', border: '1px solid #2A2B27', color: '#F7F3EC', cursor: 'pointer' }}
+                >
+                  Keep session
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  className="flex-1 py-3 rounded-2xl"
+                  style={{ background: '#C2410C', border: 'none', color: '#F7F3EC', cursor: 'pointer' }}
+                >
+                  Cancel session
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showOverlay && (
         <RecapRecorderOverlay
           state={recap.state}
