@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Channel, ConfidenceTier } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../prisma.service';
@@ -25,6 +25,8 @@ export type EscalateParams = {
 
 @Injectable()
 export class OutboundService {
+  private readonly logger = new Logger(OutboundService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly channelSenderRegistry: ChannelSenderRegistry,
@@ -62,6 +64,14 @@ export class OutboundService {
     });
 
     await this.sendViaChannelSender(params);
+
+    if (draftResult.cancelSessionId) {
+      await this.cancelSessionIfOwned(
+        params.coachId,
+        params.parentId,
+        draftResult.cancelSessionId,
+      );
+    }
   }
 
   async queueForApproval(params: SendBase): Promise<void> {
@@ -72,6 +82,7 @@ export class OutboundService {
         coachId: params.coachId,
         messageId: params.messageId,
         draftReply: draftResult.draft,
+        cancelSessionId: draftResult.cancelSessionId,
       },
     });
 
@@ -129,6 +140,33 @@ export class OutboundService {
       const reason = error instanceof Error ? error.message : 'Unknown send error';
       await this.appendDeliveryFailureDecision(params, reason);
     }
+  }
+
+  private async cancelSessionIfOwned(
+    coachId: string,
+    parentId: string,
+    sessionId: string,
+  ): Promise<void> {
+    const session = await this.prisma.session.findFirst({
+      where: { id: sessionId, coachId, kid: { parentId } },
+      select: { id: true, status: true },
+    });
+    if (!session) {
+      this.logger.warn({
+        event: 'CANCEL_SESSION_NOT_OWNED',
+        sessionId,
+        parentId,
+      });
+      return;
+    }
+    if (session.status === 'CANCELLED') {
+      return;
+    }
+    await this.prisma.session.update({
+      where: { id: sessionId },
+      data: { status: 'CANCELLED' },
+    });
+    this.logger.log({ event: 'SESSION_CANCELLED_BY_AGENT', sessionId, parentId });
   }
 
   private async appendDeliveryFailureDecision(

@@ -19,6 +19,7 @@ export type DraftReplyResult = {
   draft: string;
   bookedSlotIso: string | null;
   sessionNote: string | null;
+  cancelSessionId: string | null;
   usage: LlmUsage;
   model: string;
   latencyMs: number;
@@ -28,6 +29,7 @@ const DraftReplySchema = z.object({
   reply: z.string().transform((s) => s.slice(0, 500)),
   booked_slot_iso: z.string().nullish().transform((v) => v ?? null),
   session_note: z.string().nullish().transform((v) => (v ? v.slice(0, 120) : null)),
+  cancel_session_id: z.string().nullish().transform((v) => v ?? null),
 });
 
 const DRAFT_SYSTEM_PROMPT = `
@@ -41,11 +43,14 @@ Rules:
 - If no available slots are listed, do not invent times — offer to check with the coach instead.
 - When you confirm a booking for a specific slot, include its ISO datetime in the JSON as "booked_slot_iso".
   Use the [iso: ...] value from the slot list exactly. Only set this field when you are confirming a booking.
+- When the parent is cancelling an existing session and you can identify it from the upcoming sessions list,
+  set "cancel_session_id" to that session's [id: ...] value exactly. Only set this field when confirming a cancellation.
+  If the matching session is ambiguous (e.g. multiple kids with similar times), leave it null and ask which one.
 - If the parent shares actionable information about their child (medical, injury, equipment, dietary, scheduling notes),
   extract a concise coach-facing note (≤100 chars) and include it as "session_note". Omit if there is nothing noteworthy.
 
 IMPORTANT: Always respond with valid JSON only — no preamble, no explanation, no markdown.
-Format: { "reply": "...", "booked_slot_iso": null, "session_note": null }
+Format: { "reply": "...", "booked_slot_iso": null, "session_note": null, "cancel_session_id": null }
 `.trim();
 
 @Injectable()
@@ -59,6 +64,24 @@ export class DraftReplyState {
             .map((s) => `- ${s.label} [iso: ${s.startAt.toISOString()}]`)
             .join('\n')
         : 'No available slots';
+
+    const upcomingText =
+      input.context.upcomingSessions.length > 0
+        ? input.context.upcomingSessions
+            .map((s) => {
+              const when = new Intl.DateTimeFormat('en-US', {
+                timeZone: input.context.timezone,
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+              }).format(s.scheduledAt);
+              return `- ${s.kid.name} on ${when} [id: ${s.id}]`;
+            })
+            .join('\n')
+        : 'No upcoming sessions';
 
     const tierHint =
       input.tier === ConfidenceTier.AUTO
@@ -90,6 +113,7 @@ export class DraftReplyState {
       `Kids: ${input.context.kids.map((k) => k.name).join(', ')}`,
       `Intent: ${input.intent}`,
       `Available slots:\n${slotsText}`,
+      `Upcoming sessions:\n${upcomingText}`,
       `Conversation history (oldest first):\n${historyText}`,
       `Current message: ${input.message.content}`,
       tierHint,
@@ -113,6 +137,7 @@ export class DraftReplyState {
           draft: err.rawText.slice(0, 500),
           bookedSlotIso: null,
           sessionNote: null,
+          cancelSessionId: null,
           usage: { tokensIn: 0, tokensOut: 0 },
           model: DRAFTING_MODEL,
           latencyMs: 0,
@@ -125,6 +150,7 @@ export class DraftReplyState {
       draft: result.parsed.reply,
       bookedSlotIso: result.parsed.booked_slot_iso ?? null,
       sessionNote: result.parsed.session_note ?? null,
+      cancelSessionId: result.parsed.cancel_session_id ?? null,
       usage: result.usage,
       model: result.model,
       latencyMs: result.latencyMs,

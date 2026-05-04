@@ -433,6 +433,7 @@ export class DashboardService {
 
         const content = updated.draftReply;
         const { parentId, channel } = updated.message;
+        const cancelSessionId = updated.cancelSessionId;
         const outboundId = randomUUID();
 
         await traceStep(
@@ -478,6 +479,48 @@ export class DashboardService {
             return result;
           },
         );
+
+        if (cancelSessionId) {
+          await traceStep(
+            this.obs,
+            ctx,
+            'cancel_session',
+            'db.session.update',
+            { sessionId: cancelSessionId },
+            async () => {
+              const session = await this.prisma.session.findFirst({
+                where: {
+                  id: cancelSessionId,
+                  coachId,
+                  kid: { parentId },
+                },
+                select: { id: true, status: true },
+              });
+              if (!session) {
+                this.logger.warn({
+                  event: 'APPROVAL_CANCEL_SESSION_NOT_OWNED',
+                  approvalId,
+                  sessionId: cancelSessionId,
+                  parentId,
+                });
+                return;
+              }
+              if (session.status === 'CANCELLED') {
+                return;
+              }
+              await this.prisma.session.update({
+                where: { id: cancelSessionId },
+                data: { status: 'CANCELLED' },
+              });
+              this.logger.log({
+                event: 'SESSION_CANCELLED_BY_APPROVAL',
+                approvalId,
+                sessionId: cancelSessionId,
+                parentId,
+              });
+            },
+          );
+        }
       },
     );
   }

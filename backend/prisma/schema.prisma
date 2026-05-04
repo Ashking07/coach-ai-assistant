@@ -201,17 +201,18 @@ model AgentDecision {
 }
 
 model ApprovalQueue {
-  id          String         @id @default(cuid())
-  coachId     String
-  messageId   String
-  draftReply  String
-  status      ApprovalStatus @default(PENDING)
-  createdAt   DateTime       @default(now())
-  resolvedAt  DateTime?
-  resolvedBy  String?
+  id              String         @id @default(cuid())
+  coachId         String
+  messageId       String
+  draftReply      String
+  cancelSessionId String?
+  status          ApprovalStatus @default(PENDING)
+  createdAt       DateTime       @default(now())
+  resolvedAt      DateTime?
+  resolvedBy      String?
 
-  coach       Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  message     Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  coach           Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  message         Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([coachId, status])
   @@index([messageId])

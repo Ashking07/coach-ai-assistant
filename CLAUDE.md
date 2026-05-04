@@ -38,6 +38,23 @@ The web and worker agree on queue identity through `DEV_TEST_QUEUE = 'coach-dev-
 
 `worker.ts` handles `MESSAGE_INGESTED` jobs in a separate process and calls back into `MessagesService` to write the placeholder `AgentDecision` and mark the message processed. It also runs orphan recovery on startup.
 
+### Agent side-effects on draft approval
+
+The drafter (`modules/agent/states/draft-reply.state.ts`) returns optional structured fields alongside the reply text — currently `bookedSlotIso` (BOOK confirmations) and `cancelSessionId` (CANCEL confirmations). Each is the prompt-side handle for a session-state mutation that should run when the reply actually goes out. The pattern is:
+
+1. Drafter is given `availableSlots` and `upcomingSessions` from `AgentContext`, both rendered with their primary keys (`[iso: ...]` and `[id: ...]`) so the model can quote them verbatim.
+2. Drafter's `DraftReplySchema` accepts the matching field; `DRAFT_SYSTEM_PROMPT` instructs the model when to populate it.
+3. On the auto-send path, `OutboundService.autoSend` performs the mutation immediately after the channel sender succeeds.
+4. On the queue path, the field is persisted on the `ApprovalQueue` row (`cancelSessionId` column added by migration `20260504050622_add_cancel_session_to_approval`); `DashboardService.sendApproval` re-reads it after dispatch and runs the same mutation.
+
+For CANCEL specifically, the mutation is gated by ownership: the session must belong to the parent's kid (`kid.parentId === parentId`) and be on the same coach. If the model picks a session ID the parent doesn't own, the mutation is skipped and an `APPROVAL_CANCEL_SESSION_NOT_OWNED` log is emitted — the draft still goes out so we don't strand the parent waiting for a confirmation.
+
+To add a new structured action (e.g. `rescheduleSessionId` + `rescheduleToIso`):
+- Extend `DraftReplySchema` and `DRAFT_SYSTEM_PROMPT`.
+- Plumb the field through `DraftReplyResult`.
+- Add a column on `ApprovalQueue`, persist in `OutboundService.queueForApproval`, act on it in `DashboardService.sendApproval`.
+- Mirror the immediate mutation in `OutboundService.autoSend` for the auto-confidence path.
+
 ### Messaging channels
 
 Inbound webhooks live in `modules/twilio/twilio.controller.ts` (POST `/api/twilio/inbound`) and `modules/telnyx/telnyx.controller.ts` (POST `/api/telnyx/inbound`). Both ingest via `MessagesService` with `channel: 'SMS'`. The `Channel` Prisma enum is `SMS | WEB_CHAT | VOICE` only — there is no `WHATSAPP` value. WhatsApp messages are stored as `SMS`.
