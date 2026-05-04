@@ -12,6 +12,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { z } from 'zod';
 import { timingSafeEqualStr } from '../../common/timing-safe-equal';
 import { DashboardService } from './dashboard.service';
 
@@ -121,6 +122,11 @@ export class DashboardController {
     return this.dashboardService.getAvailability(this.guard(token), weekStart);
   }
 
+  @Get('kids')
+  getKids(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.getKids(this.guard(token));
+  }
+
   @Post('availability')
   addAvailability(
     @Headers('x-dashboard-token') token: string | undefined,
@@ -146,6 +152,31 @@ export class DashboardController {
     @Headers('x-dashboard-token') token: string | undefined,
   ) {
     return this.dashboardService.cancelSession(this.guard(token), id);
+  }
+
+  @Post('sessions')
+  createSession(
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const schema = z.object({
+      kidId: z.string().min(1),
+      scheduledAt: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?Z$/),
+      durationMinutes: z.union([z.literal(30), z.literal(45), z.literal(60), z.literal(90)]),
+    });
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid session payload');
+    }
+
+    return this.dashboardService.scheduleSession(
+      this.guard(token),
+      parsed.data.kidId,
+      parsed.data.scheduledAt,
+      parsed.data.durationMinutes,
+    );
   }
 
   @Post('sessions/:id/recap')

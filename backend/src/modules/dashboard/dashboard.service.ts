@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ApprovalStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -72,6 +72,7 @@ export interface HomeResponseDto {
   sessions: SessionDto[];
   autoHandled: AutoHandledDto[];
   stats: { firesCount: number; handledCount: number };
+  coach: { timezone: string };
 }
 
 export interface AuditEntryDto {
@@ -173,6 +174,12 @@ export class DashboardService {
   async getHome(coachId: string): Promise<HomeResponseDto> {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+    const coach = await this.prisma.coach.findUniqueOrThrow({
+      where: { id: coachId },
+      select: { timezone: true },
+    });
+    const { start, end } = todayBoundsForTZ(coach.timezone);
+
     const [
       fireDecisions,
       pendingApprovals,
@@ -206,7 +213,6 @@ export class DashboardService {
         orderBy: { createdAt: 'desc' },
       }),
       (() => {
-        const { start, end } = todayBoundsForTZ('America/Los_Angeles');
         return this.prisma.session.findMany({
           where: {
             coachId,
@@ -281,6 +287,7 @@ export class DashboardService {
       sessions,
       autoHandled,
       stats: { firesCount: fires.length, handledCount },
+      coach: { timezone: coach.timezone },
     };
   }
 
@@ -833,21 +840,71 @@ export class DashboardService {
     }
   }
 
-  async scheduleSession(coachId: string, kidId: string, startAtIso: string): Promise<void> {
-    const kid = await this.prisma.kid.findFirst({ where: { id: kidId, coachId } });
-    if (!kid) throw new NotFoundException(`Kid not found`);
+  async scheduleSession(
+    coachId: string,
+    kidId: string,
+    startAtIso: string,
+    durationMinutes = 60,
+  ): Promise<{ id: string }> {
+    const scheduledAt = new Date(startAtIso);
+    if (isNaN(scheduledAt.getTime())) {
+      throw new BadRequestException('scheduledAt must be a valid ISO datetime');
+    }
+    if (scheduledAt.getTime() <= Date.now()) {
+      throw new BadRequestException('scheduledAt must be in the future');
+    }
 
-    await this.prisma.session.create({
-      data: {
-        coachId,
-        kidId,
-        scheduledAt: new Date(startAtIso),
-        durationMinutes: 60,
-        status: 'CONFIRMED',
-      },
+    const durationMs = durationMinutes * 60 * 1000;
+    const slotWindowStart = new Date(scheduledAt.getTime() - 2 * 60 * 1000);
+    const slotWindowEnd = new Date(scheduledAt.getTime() + 2 * 60 * 1000);
+    const overlapWindowStart = new Date(scheduledAt.getTime() - 2 * 60 * 60 * 1000);
+    const overlapWindowEnd = new Date(scheduledAt.getTime() + durationMs);
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const kid = await tx.kid.findFirst({ where: { id: kidId, coachId } });
+      if (!kid) throw new NotFoundException('Kid not found');
+
+      const candidates = await tx.session.findMany({
+        where: {
+          coachId,
+          status: { not: 'CANCELLED' },
+          scheduledAt: { lt: overlapWindowEnd, gte: overlapWindowStart },
+        },
+        select: { id: true, scheduledAt: true, durationMinutes: true },
+      });
+
+      const hasOverlap = candidates.some((s) => {
+        const endAt = new Date(s.scheduledAt.getTime() + s.durationMinutes * 60 * 1000);
+        return s.scheduledAt < overlapWindowEnd && endAt > scheduledAt;
+      });
+      if (hasOverlap) {
+        throw new ConflictException('Session overlaps existing session');
+      }
+
+      const session = await tx.session.create({
+        data: {
+          coachId,
+          kidId,
+          scheduledAt,
+          durationMinutes,
+          status: 'CONFIRMED',
+        },
+      });
+
+      await tx.availability.deleteMany({
+        where: {
+          coachId,
+          isBlocked: false,
+          startAt: { gte: slotWindowStart, lte: slotWindowEnd },
+        },
+      });
+
+      return session;
     });
 
-    this.logger.log({ event: 'SESSION_SCHEDULED_VOICE', coachId, kidId, startAtIso });
+    // TODO: If we ever add notifications for manual scheduling, add them here.
+    this.logger.log({ event: 'SESSION_SCHEDULED', coachId, kidId, startAtIso, durationMinutes });
+    return { id: created.id };
   }
 
   async getKids(coachId: string): Promise<{ id: string; name: string; parentName: string }[]> {
@@ -856,7 +913,7 @@ export class DashboardService {
       include: { parent: { select: { name: true } } },
       orderBy: { name: 'asc' },
     });
-    return kids.map((k) => ({ id: k.id, name: k.name, parentName: k.parent.name }));
+    return kids.map((k) => ({ id: k.id, name: k.name, parentName: k.parent?.name ?? 'Unknown parent' }));
   }
 
   async createSessionRecap(

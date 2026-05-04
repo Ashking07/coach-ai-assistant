@@ -46,6 +46,7 @@ export interface HomeResponse {
   sessions: DashboardSession[];
   autoHandled: AutoHandled[];
   stats: { firesCount: number; handledCount: number };
+  coach: { timezone: string };
 }
 
 export interface AuditEntry {
@@ -95,6 +96,12 @@ export interface AvailabilitySlot {
   endAt: string;
   isBlocked: boolean;
   reason: string;
+}
+
+export interface KidOption {
+  id: string;
+  name: string;
+  parentName: string;
 }
 
 export interface ParentSessionResponse {
@@ -170,6 +177,7 @@ export const api = {
     }),
   getWeekSessions: (weekStart?: string) => apiFetch<WeekSession[]>(`/api/dashboard/sessions/week${weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : ''}`),
   getAvailability: (weekStart?: string) => apiFetch<AvailabilitySlot[]>(`/api/dashboard/availability${weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : ''}`),
+  getKids: () => apiFetch<KidOption[]>('/api/dashboard/kids'),
   addAvailability: (startAt: string, endAt: string) =>
     apiFetch<AvailabilitySlot>('/api/dashboard/availability', {
       method: 'POST',
@@ -179,6 +187,11 @@ export const api = {
     apiFetch<void>(`/api/dashboard/availability/${id}`, { method: 'DELETE' }),
   cancelSession: (id: string) =>
     apiFetch<void>(`/api/dashboard/sessions/${id}`, { method: 'DELETE' }),
+  createSession: (input: { kidId: string; scheduledAt: string; durationMinutes: number }) =>
+    apiFetch<{ id: string }>('/api/dashboard/sessions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   voice: {
     confirmProposal: (id: string) =>
       apiFetch<{ ok: true }>(`/api/voice/proposals/${id}/confirm`, { method: 'POST' }),

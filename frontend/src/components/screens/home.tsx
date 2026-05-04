@@ -401,7 +401,7 @@ export function HomeScreen({
           ) : null}
 
           {/* Week view */}
-          <WeekView sessions={data.sessions} />
+          <WeekView sessions={data.sessions} coachTimezone={data.coach?.timezone} />
 
           {/* Auto-handled */}
           <AutoHandledSection data={data.autoHandled} />

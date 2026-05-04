@@ -11,11 +11,13 @@ function makePrismaMock() {
   return {
     agentDecision: { findMany: jest.fn(), count: jest.fn() },
     approvalQueue: { findMany: jest.fn(), update: jest.fn() },
-    session: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    session: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
     parent: { findMany: jest.fn(), findFirst: jest.fn() },
     coach: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), update: jest.fn() },
+    kid: { findFirst: jest.fn(), findMany: jest.fn() },
     availability: { findMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() },
     message: { create: jest.fn() },
+    $transaction: jest.fn(),
   };
 }
 
@@ -112,6 +114,7 @@ describe('DashboardService.dismissApproval', () => {
 describe('DashboardService.getHome', () => {
   it('maps escalated decisions into fires with parent/kid/preview', async () => {
     const prisma = makePrismaMock();
+    prisma.coach.findUniqueOrThrow.mockResolvedValue({ timezone: 'America/Los_Angeles' });
     const now = new Date();
     const autoHandledStubs = [
       {
@@ -172,6 +175,7 @@ describe('DashboardService.getHome', () => {
 
   it('maps pending approvals with draft and confidence', async () => {
     const prisma = makePrismaMock();
+    prisma.coach.findUniqueOrThrow.mockResolvedValue({ timezone: 'America/Los_Angeles' });
     const now = new Date();
     prisma.agentDecision.findMany
       .mockResolvedValueOnce([]) // fires
@@ -244,6 +248,50 @@ describe('DashboardService.cancelSession', () => {
       where: { id: 'sess_test_1' },
       data: { status: 'CANCELLED' },
     });
+  });
+});
+
+describe('DashboardService.scheduleSession', () => {
+  it('defaults duration to 60 minutes', async () => {
+    const prisma = makePrismaMock();
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) => fn(prisma));
+    prisma.kid.findFirst.mockResolvedValue({ id: 'kid_1', coachId: 'coach_1' });
+    prisma.session.findMany.mockResolvedValue([]);
+    prisma.session.create.mockResolvedValue({ id: 'sess_1' });
+
+    const service = await makeService(prisma);
+    const res = await service.scheduleSession('coach_1', 'kid_1', new Date(Date.now() + 60000).toISOString());
+
+    expect(prisma.session.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ durationMinutes: 60, status: 'CONFIRMED' }),
+    });
+    expect(res).toEqual({ id: 'sess_1' });
+  });
+
+  it('persists a custom duration', async () => {
+    const prisma = makePrismaMock();
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) => fn(prisma));
+    prisma.kid.findFirst.mockResolvedValue({ id: 'kid_1', coachId: 'coach_1' });
+    prisma.session.findMany.mockResolvedValue([]);
+    prisma.session.create.mockResolvedValue({ id: 'sess_2' });
+
+    const service = await makeService(prisma);
+    await service.scheduleSession('coach_1', 'kid_1', new Date(Date.now() + 60000).toISOString(), 90);
+
+    expect(prisma.session.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ durationMinutes: 90, status: 'CONFIRMED' }),
+    });
+  });
+
+  it('rejects when kid does not belong to coach', async () => {
+    const prisma = makePrismaMock();
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) => fn(prisma));
+    prisma.kid.findFirst.mockResolvedValue(null);
+
+    const service = await makeService(prisma);
+    await expect(
+      service.scheduleSession('coach_1', 'kid_bad', new Date(Date.now() + 60000).toISOString()),
+    ).rejects.toThrow(/Kid not found/i);
   });
 });
 

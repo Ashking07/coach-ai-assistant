@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { T } from '../tokens';
 import { api, type AvailabilitySlot, type DashboardSession, type WeekSession } from '../lib/api';
 import { SessionCard } from './cards';
+import { AddSessionModal } from './add-session-modal';
 
 const stone = '#8A857B';
 
@@ -57,6 +58,13 @@ function getDayDate(monday: Date, dayIndex: number) {
   const d = new Date(monday);
   d.setDate(monday.getDate() + dayIndex);
   return d.getDate();
+}
+
+function getDayDateObj(monday: Date, dayIndex: number) {
+  const d = new Date(monday);
+  d.setDate(monday.getDate() + dayIndex);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 // Convert a DB WeekSession → Block
@@ -113,13 +121,16 @@ export function WeekView({
   today,
   sessions = [],
   onOpenSession,
+  coachTimezone,
 }: {
   today?: number;
   sessions?: DashboardSession[];
   onOpenSession?: (id: string) => void;
+  coachTimezone?: string;
 }) {
   const todayIndex = today ?? ((new Date().getDay() + 6) % 7);
   const [openDay, setOpenDay] = useState<number | null>(null);
+  const [addSessionDate, setAddSessionDate] = useState<Date | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const { monday, dateRange } = getWeekInfo(weekOffset);
   const weekStartIso = monday.toISOString();
@@ -429,6 +440,18 @@ export function WeekView({
           isPast={openDay < todayIndex && isCurrentWeek}
           onClose={() => setOpenDay(null)}
           onToggle={(start) => toggle(openDay, start)}
+          onAddSession={() => setAddSessionDate(getDayDateObj(monday, openDay))}
+        />
+      )}
+
+      {addSessionDate && (
+        <AddSessionModal
+          open
+          defaultDate={addSessionDate}
+          coachTimezone={coachTimezone}
+          weekStartIso={weekStartIso}
+          onClose={() => setAddSessionDate(null)}
+          onCreated={() => setAddSessionDate(null)}
         />
       )}
     </div>
@@ -443,6 +466,7 @@ function DayDetailSheet({
   isPast,
   onClose,
   onToggle,
+  onAddSession,
 }: {
   day: number;
   dateNum: number;
@@ -451,6 +475,7 @@ function DayDetailSheet({
   isPast: boolean;
   onClose: () => void;
   onToggle: (slotStart: number) => void;
+  onAddSession: () => void;
 }) {
   const slots: number[] = [];
   for (let m = HOUR_START * 60; m < HOUR_END * 60; m += 30) slots.push(m);
@@ -487,6 +512,22 @@ function DayDetailSheet({
           </div>
           <button onClick={onClose} className="p-2" style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
             <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-5 pt-3 pb-2" style={{ borderBottom: '1px solid var(--hairline)' }}>
+          <button
+            onClick={onAddSession}
+            className="px-3 py-2 rounded-xl"
+            style={{
+              background: T.sunrise + '1F',
+              border: `1px solid ${T.sunrise}55`,
+              color: T.sunrise,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            + Add session
           </button>
         </div>
 
