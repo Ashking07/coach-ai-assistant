@@ -20,8 +20,18 @@ export class StripeService {
     private readonly prisma: PrismaService,
   ) {
     const secretKey = this.config.get<string>('STRIPE_SECRET_KEY');
-    this.refreshUrl = this.config.get<string>('STRIPE_CONNECT_REFRESH_URL');
-    this.returnUrl = this.config.get<string>('STRIPE_CONNECT_RETURN_URL');
+    const backendBase =
+      this.config.get<string>('PUBLIC_BASE_URL') ??
+      'https://coach-ai-assistant-backend.onrender.com';
+    const frontendBase =
+      this.config.get<string>('FRONTEND_URL') ??
+      'https://coach-ai-assistant-frontend.vercel.app';
+    this.refreshUrl =
+      this.config.get<string>('STRIPE_CONNECT_REFRESH_URL') ??
+      `${backendBase}/api/dashboard/stripe/onboard/return`;
+    this.returnUrl =
+      this.config.get<string>('STRIPE_CONNECT_RETURN_URL') ??
+      `${frontendBase}/settings`;
     if (secretKey) {
       this.stripe = this.createStripe(secretKey);
     }
@@ -40,9 +50,6 @@ export class StripeService {
 
   async createConnectAccount(coachId: string): Promise<{ url: string }> {
     const stripe = this.requireStripe();
-    if (!this.refreshUrl || !this.returnUrl) {
-      throw new BadRequestException('Stripe connect URLs are not configured');
-    }
 
     const coach = await this.prisma.coach.findUnique({
       where: { id: coachId },
