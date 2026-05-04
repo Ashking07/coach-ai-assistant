@@ -15,12 +15,14 @@ import { ConfigService } from '@nestjs/config';
 import { z } from 'zod';
 import { timingSafeEqualStr } from '../../common/timing-safe-equal';
 import { DashboardService } from './dashboard.service';
+import { StripeService } from '../stripe/stripe.service';
 
 @Controller('api/dashboard')
 export class DashboardController {
   constructor(
     private readonly dashboardService: DashboardService,
     private readonly config: ConfigService,
+    private readonly stripeService: StripeService,
   ) {}
 
   private guard(token: string | undefined): string {
@@ -51,18 +53,36 @@ export class DashboardController {
     return this.dashboardService.getSettings(this.guard(token));
   }
 
+  @Post('stripe/onboard')
+  async startStripeOnboarding(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.stripeService.createConnectAccount(this.guard(token));
+  }
+
+  @Get('stripe/onboard/return')
+  stripeOnboardReturn() {
+    return { ok: true };
+  }
+
+  @Post('stripe/refresh')
+  async refreshStripe(@Headers('x-dashboard-token') token: string | undefined) {
+    await this.stripeService.refreshConnectStatus(this.guard(token));
+    return this.dashboardService.getSettings(this.guard(token));
+  }
+
   @Patch('settings')
   updateSettings(
     @Headers('x-dashboard-token') token: string | undefined,
     @Body() body: unknown,
   ) {
-    const parsed = body as Record<string, unknown>;
-    if (!parsed || typeof parsed.autonomyEnabled !== 'boolean') {
-      throw new BadRequestException('autonomyEnabled must be a boolean');
-    }
-    return this.dashboardService.updateSettings(this.guard(token), {
-      autonomyEnabled: parsed.autonomyEnabled,
+    const schema = z.object({
+      autonomyEnabled: z.boolean().optional(),
+      defaultRateCents: z.number().int().min(0).max(100000).optional(),
     });
+    const parsed = schema.safeParse(body);
+    if (!parsed.success || (!('autonomyEnabled' in parsed.data) && !('defaultRateCents' in parsed.data))) {
+      throw new BadRequestException('Invalid settings payload');
+    }
+    return this.dashboardService.updateSettings(this.guard(token), parsed.data);
   }
 
   @Post('approvals/:id/send')
@@ -127,6 +147,22 @@ export class DashboardController {
     return this.dashboardService.getKids(this.guard(token));
   }
 
+  @Patch('kids/:id')
+  updateKid(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const schema = z.object({
+      rateCentsOverride: z.number().int().min(0).max(100000).nullable(),
+    });
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid kid payload');
+    }
+    return this.dashboardService.updateKidRate(this.guard(token), id, parsed.data.rateCentsOverride);
+  }
+
   @Post('availability')
   addAvailability(
     @Headers('x-dashboard-token') token: string | undefined,
@@ -176,6 +212,36 @@ export class DashboardController {
       parsed.data.kidId,
       parsed.data.scheduledAt,
       parsed.data.durationMinutes,
+    );
+  }
+
+  @Post('sessions/:id/payment-link')
+  sendPaymentLink(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+  ) {
+    return this.dashboardService.sendPaymentLink(this.guard(token), id);
+  }
+
+  @Post('sessions/:id/mark-paid')
+  markPaid(
+    @Param('id') id: string,
+    @Headers('x-dashboard-token') token: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const schema = z.object({
+      method: z.enum(['CASH', 'VENMO', 'ZELLE', 'CHECK', 'OTHER']),
+      notes: z.string().max(1000).optional(),
+    });
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid payment payload');
+    }
+    return this.dashboardService.markSessionPaid(
+      this.guard(token),
+      id,
+      parsed.data.method,
+      parsed.data.notes,
     );
   }
 

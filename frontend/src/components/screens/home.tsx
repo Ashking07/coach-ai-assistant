@@ -401,7 +401,7 @@ export function HomeScreen({
           ) : null}
 
           {/* Week view */}
-          <WeekView sessions={data.sessions} coachTimezone={data.coach?.timezone} />
+          <WeekView sessions={data.sessions} coachTimezone={data.coach?.timezone} stripeConnected={data.coach?.stripeChargesEnabled} />
 
           {/* Auto-handled */}
           <AutoHandledSection data={data.autoHandled} />

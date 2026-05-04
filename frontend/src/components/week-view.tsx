@@ -122,11 +122,13 @@ export function WeekView({
   sessions = [],
   onOpenSession,
   coachTimezone,
+  stripeConnected,
 }: {
   today?: number;
   sessions?: DashboardSession[];
   onOpenSession?: (id: string) => void;
   coachTimezone?: string;
+  stripeConnected?: boolean;
 }) {
   const todayIndex = today ?? ((new Date().getDay() + 6) % 7);
   const [openDay, setOpenDay] = useState<number | null>(null);
@@ -339,6 +341,7 @@ export function WeekView({
                         session={s}
                         onOpen={() => onOpenSession?.(s.id)}
                         onDelete={(id) => cancelSessionMutation.mutate(id)}
+                        stripeConnected={stripeConnected}
                       />
                     ))}
                   </div>

@@ -1,8 +1,10 @@
 import { ChevronRight, Mic, Trash2, X } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { T } from '../tokens';
+import { api } from '../lib/api';
 import { IntentBadge, TierBadge } from './badges';
 import { KidAvatar } from './avatar';
-import type { Fire, Approval, DashboardSession } from '../lib/api';
+import type { Fire, Approval, DashboardSession, PaymentMethod } from '../lib/api';
 
 // ─── FireCard ────────────────────────────────────────────────────────────────
 
@@ -163,14 +165,20 @@ export function SessionCard({
   session,
   onOpen,
   onDelete,
+  stripeConnected,
 }: {
   session: DashboardSession;
   onOpen: () => void;
   onDelete?: (id: string) => void;
+  stripeConnected?: boolean;
 }) {
+  const queryClient = useQueryClient();
   const recap = useRecapRecorder(session.id);
   const [showOverlay, setShowOverlay] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showMarkPaid, setShowMarkPaid] = useState(false);
+  const [paidMethod, setPaidMethod] = useState<PaymentMethod>('CASH');
+  const [paidNotes, setPaidNotes] = useState('');
 
   const handleMicClick = () => {
     setShowOverlay(true);
@@ -194,6 +202,33 @@ export function SessionCard({
     }
   };
 
+  const markPaidMutation = useMutation({
+    mutationFn: () => api.markSessionPaid(session.id, { method: paidMethod, notes: paidNotes || undefined }),
+    onSuccess: () => {
+      setShowMarkPaid(false);
+      setPaidNotes('');
+      void queryClient.invalidateQueries({ queryKey: ['home'] });
+      void queryClient.invalidateQueries({ queryKey: ['week-sessions'] });
+    },
+  });
+
+  const [paymentLinkSent, setPaymentLinkSent] = useState(false);
+  const sendPaymentLinkMutation = useMutation({
+    mutationFn: () => api.sendPaymentLink(session.id),
+    onSuccess: () => {
+      setPaymentLinkSent(true);
+      setTimeout(() => setPaymentLinkSent(false), 4000);
+    },
+  });
+
+  const isPast = (() => {
+    const [hh, mm] = session.time.split(':').map((v) => Number(v));
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return false;
+    const d = new Date();
+    d.setHours(hh, mm, 0, 0);
+    return d.getTime() < Date.now();
+  })();
+
   useEffect(() => {
     if (recap.state === 'done') {
       const t = setTimeout(() => setShowOverlay(false), 2000);
@@ -216,6 +251,11 @@ export function SessionCard({
               UNPAID
             </span>
           )}
+          {session.paid && (
+            <span style={{ fontSize: 10, fontFamily: 'Geist Mono, monospace', color: T.moss, letterSpacing: '0.08em' }}>
+              PAID{session.paymentMethod ? ` · ${session.paymentMethod}` : ''}
+            </span>
+          )}
         </div>
         <div style={{ color: 'var(--text)', fontSize: 17, fontWeight: 500 }}>{session.kid}</div>
         <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>{session.note || 'No notes'}</div>
@@ -228,6 +268,39 @@ export function SessionCard({
             Open <ChevronRight size={14} />
           </div>
           <div className="flex items-center gap-1">
+            {!session.paid && stripeConnected && session.priceCents > 0 && (
+              <button
+                onClick={() => sendPaymentLinkMutation.mutate()}
+                disabled={sendPaymentLinkMutation.isPending || paymentLinkSent}
+                className="px-2 py-1 rounded-lg transition-colors"
+                style={{
+                  background: T.sunrise + '18',
+                  color: paymentLinkSent ? T.moss : T.sunrise,
+                  border: `1px solid ${paymentLinkSent ? T.moss : T.sunrise}55`,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+                title="Send Stripe payment link"
+              >
+                {paymentLinkSent ? 'Link sent ✓' : sendPaymentLinkMutation.isPending ? 'Sending…' : 'Send link'}
+              </button>
+            )}
+            {!session.paid && isPast && (
+              <button
+                onClick={() => setShowMarkPaid(true)}
+                className="px-2 py-1 rounded-lg transition-colors"
+                style={{
+                  background: T.moss + '18',
+                  color: T.moss,
+                  border: `1px solid ${T.moss}55`,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+                title="Mark paid"
+              >
+                Mark paid
+              </button>
+            )}
             {onDelete && (
               <button
                 onClick={handleDeleteClick}
@@ -319,6 +392,100 @@ export function SessionCard({
                   style={{ background: '#C2410C', border: 'none', color: '#F7F3EC', cursor: 'pointer' }}
                 >
                   Cancel session
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showMarkPaid && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4 md:p-8"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', zIndex: 80 }}
+          onClick={() => setShowMarkPaid(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative flex flex-col w-full rounded-3xl overflow-hidden"
+            style={{
+              background: '#0E0F0C',
+              border: '1px solid #2A2B27',
+              maxWidth: 420,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div
+              className="sticky top-0 flex items-center justify-between px-5 py-4"
+              style={{ background: 'rgba(14,15,12,0.92)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #2A2B27' }}
+            >
+              <span
+                style={{
+                  fontFamily: 'Geist Mono, monospace',
+                  fontSize: 11,
+                  letterSpacing: '0.1em',
+                  color: '#A8A49B',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Mark paid
+              </span>
+              <button
+                onClick={() => setShowMarkPaid(false)}
+                className="p-2 -mr-2 rounded-full"
+                style={{ color: '#A8A49B', background: 'none', border: 'none', cursor: 'pointer' }}
+                aria-label="Close mark paid"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-5 md:px-6 py-6 flex flex-col gap-4">
+              <div style={{ color: '#F7F3EC', fontSize: 18, fontWeight: 500 }}>Payment method</div>
+              <div className="flex flex-wrap gap-2">
+                {(['CASH', 'VENMO', 'ZELLE', 'CHECK', 'OTHER'] as PaymentMethod[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPaidMethod(m)}
+                    className="px-3 py-2 rounded-xl"
+                    style={{
+                      background: paidMethod === m ? T.sunrise + '22' : 'transparent',
+                      border: `1px solid ${paidMethod === m ? T.sunrise : '#2A2B27'}`,
+                      color: paidMethod === m ? T.sunrise : '#F7F3EC',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <label className="flex flex-col gap-2">
+                <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, letterSpacing: '0.1em', color: '#A8A49B', textTransform: 'uppercase' }}>
+                  Notes (optional)
+                </span>
+                <input
+                  value={paidNotes}
+                  onChange={(e) => setPaidNotes(e.target.value)}
+                  className="rounded-xl px-3 py-2"
+                  style={{ background: '#12130F', border: '1px solid #2A2B27', color: '#F7F3EC' }}
+                />
+              </label>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowMarkPaid(false)}
+                  className="flex-1 py-3 rounded-2xl"
+                  style={{ background: 'transparent', border: '1px solid #2A2B27', color: '#F7F3EC', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => markPaidMutation.mutate()}
+                  disabled={markPaidMutation.isPending}
+                  className="flex-1 py-3 rounded-2xl"
+                  style={{ background: T.sunrise, border: 'none', color: '#F7F3EC', cursor: 'pointer' }}
+                >
+                  {markPaidMutation.isPending ? 'Saving…' : 'Mark paid'}
                 </button>
               </div>
             </div>

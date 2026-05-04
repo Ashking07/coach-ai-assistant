@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type SettingsResponse } from '../../lib/api';
+import { useEffect, useState } from 'react';
+import { api, type SettingsResponse, type KidOption } from '../../lib/api';
 import { T } from '../../tokens';
 
 export function SettingsScreen() {
@@ -9,13 +10,37 @@ export function SettingsScreen() {
     queryFn: api.settings,
   });
 
+  const { data: kids = [] } = useQuery({
+    queryKey: ['kids'],
+    queryFn: api.getKids,
+    enabled: Boolean(data),
+  });
+
+  const [rateInput, setRateInput] = useState('');
+  const [rateError, setRateError] = useState<string | null>(null);
+  const [kidRates, setKidRates] = useState<Record<string, string>>({});
+  const [kidRateBusy, setKidRateBusy] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (data) {
+      setRateInput((data.defaultRateCents / 100).toFixed(2));
+    }
+  }, [data]);
+  useEffect(() => {
+    if (!kids.length) return;
+    const next: Record<string, string> = {};
+    kids.forEach((k) => {
+      next[k.id] = k.rateCentsOverride != null ? (k.rateCentsOverride / 100).toFixed(2) : '';
+    });
+    setKidRates(next);
+  }, [kids]);
+
   const mutation = useMutation({
-    mutationFn: (autonomyEnabled: boolean) => api.updateSettings({ autonomyEnabled }),
-    onMutate: async (autonomyEnabled) => {
+    mutationFn: (payload: { autonomyEnabled?: boolean; defaultRateCents?: number }) => api.updateSettings(payload),
+    onMutate: async (payload) => {
       await queryClient.cancelQueries({ queryKey: ['settings'] });
       const prev = queryClient.getQueryData<SettingsResponse>(['settings']);
       queryClient.setQueryData<SettingsResponse>(['settings'], (old) =>
-        old ? { ...old, autonomyEnabled } : old,
+        old ? { ...old, ...payload } : old,
       );
       return { prev };
     },
@@ -90,7 +115,7 @@ export function SettingsScreen() {
                 </div>
               </div>
               <button
-                onClick={() => mutation.mutate(!autonomy)}
+                onClick={() => mutation.mutate({ autonomyEnabled: !autonomy })}
                 disabled={mutation.isPending}
                 className="shrink-0 rounded-full transition-colors"
                 style={{
@@ -183,6 +208,178 @@ export function SettingsScreen() {
               STATUS · {(data?.agentPaused ?? false) ? 'PAUSED · AGENT STOPPED' : 'ACTIVE · AGENT RUNNING'}
             </div>
           </div>
+
+          {/* Payments */}
+          <div
+            className="rounded-2xl p-5 mt-6"
+            style={{ background: 'var(--panel)', border: '1px solid var(--hairline)' }}
+          >
+            <div style={{ color: 'var(--text)', fontSize: 17 }}>Payments</div>
+            <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6, maxWidth: 420 }}>
+              Set your default rate. Per-kid overrides can be added later.
+            </div>
+            <div className="flex items-center gap-3 mt-4">
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                style={{ background: 'var(--surface-sub)', border: '1px solid var(--hairline)' }}
+              >
+                <span style={{ color: 'var(--muted)' }}>$</span>
+                <input
+                  value={rateInput}
+                  onChange={(e) => setRateInput(e.target.value)}
+                  className="bg-transparent outline-none"
+                  style={{ color: 'var(--text)', width: 88 }}
+                  inputMode="decimal"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const value = Number(rateInput);
+                  const cents = Math.round(value * 100);
+                  if (!Number.isFinite(cents)) {
+                    setRateError('Enter a valid number.');
+                    return;
+                  }
+                  if (cents < 0 || cents > 100000) {
+                    setRateError('Rate must be between $0 and $1000.');
+                    return;
+                  }
+                  setRateError(null);
+                  mutation.mutate({ defaultRateCents: cents });
+                }}
+                className="px-4 py-2 rounded-xl"
+                style={{ background: T.sunrise, color: '#F7F3EC', border: 'none', cursor: 'pointer' }}
+              >
+                Save rate
+              </button>
+            </div>
+            {rateError && (
+              <div
+                className="rounded-xl px-3 py-2 mt-3"
+                style={{ background: 'rgba(244,67,54,0.12)', border: '1px solid rgba(244,67,54,0.3)', color: '#F44336', fontSize: 13 }}
+              >
+                {rateError}
+              </div>
+            )}
+            <div className="flex items-center gap-3 mt-3 flex-wrap">
+              <div
+                style={{
+                  fontFamily: 'Geist Mono, monospace',
+                  fontSize: 11,
+                  color: data?.stripeOnboardingDone ? T.moss : 'var(--muted)',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                STRIPE · {data?.stripeOnboardingDone ? 'CONNECTED' : 'NOT CONNECTED'}
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const { url } = await api.startStripeOnboarding();
+                    window.location.href = url;
+                  } catch {
+                    // intentionally empty — network errors surface in Stripe redirect
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl"
+                style={{
+                  background: T.sunrise + '18',
+                  border: `1px solid ${T.sunrise}55`,
+                  color: T.sunrise,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                {data?.stripeOnboardingDone ? 'Reconnect Stripe' : 'Connect Stripe'}
+              </button>
+            </div>
+          </div>
+
+          {/* Per-kid rates */}
+          {kids.length > 0 && (
+            <div
+              className="rounded-2xl p-5 mt-6"
+              style={{ background: 'var(--panel)', border: '1px solid var(--hairline)' }}
+            >
+              <div style={{ color: 'var(--text)', fontSize: 17 }}>Per-kid rates</div>
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6, maxWidth: 420 }}>
+                Optional overrides per kid. Leave blank to use the default rate.
+              </div>
+              <div
+                className="mt-4 flex flex-col gap-3"
+                style={{ maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}
+              >
+                {kids.map((kid: KidOption) => (
+                  <div
+                    key={kid.id}
+                    className="flex items-center justify-between gap-3"
+                    style={{ borderTop: '1px solid var(--hairline)', paddingTop: 12 }}
+                  >
+                    <div>
+                      <div style={{ color: 'var(--text)', fontSize: 14 }}>{kid.name}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>{kid.parentName}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                        style={{ background: 'var(--surface-sub)', border: '1px solid var(--hairline)' }}
+                      >
+                        <span style={{ color: 'var(--muted)' }}>$</span>
+                        <input
+                          value={kidRates[kid.id] ?? ''}
+                          onChange={(e) =>
+                            setKidRates((prev) => ({ ...prev, [kid.id]: e.target.value }))
+                          }
+                          className="bg-transparent outline-none"
+                          style={{ color: 'var(--text)', width: 72 }}
+                          inputMode="decimal"
+                          placeholder="—"
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const raw = kidRates[kid.id] ?? '';
+                          const next = raw.trim() === '' ? null : Math.round(Number(raw) * 100);
+                          if (next !== null && (!Number.isFinite(next) || next < 0 || next > 100000)) {
+                            return;
+                          }
+                          setKidRateBusy((prev) => ({ ...prev, [kid.id]: true }));
+                          try {
+                            await api.updateKidRate(kid.id, next);
+                            void queryClient.invalidateQueries({ queryKey: ['kids'] });
+                          } finally {
+                            setKidRateBusy((prev) => ({ ...prev, [kid.id]: false }));
+                          }
+                        }}
+                        disabled={kidRateBusy[kid.id]}
+                        className="px-3 py-2 rounded-xl"
+                        style={{ background: T.sunrise, color: '#F7F3EC', border: 'none', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setKidRateBusy((prev) => ({ ...prev, [kid.id]: true }));
+                          try {
+                            await api.updateKidRate(kid.id, null);
+                            setKidRates((prev) => ({ ...prev, [kid.id]: '' }));
+                            void queryClient.invalidateQueries({ queryKey: ['kids'] });
+                          } finally {
+                            setKidRateBusy((prev) => ({ ...prev, [kid.id]: false }));
+                          }
+                        }}
+                        disabled={kidRateBusy[kid.id]}
+                        className="px-3 py-2 rounded-xl"
+                        style={{ background: 'transparent', color: 'var(--muted)', border: '1px solid var(--hairline)', cursor: 'pointer', fontSize: 12 }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Profile rows */}
           <div className="mt-6 flex flex-col">

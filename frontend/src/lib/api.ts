@@ -29,6 +29,8 @@ export interface DashboardSession {
   duration: string;
   note: string;
   paid: boolean;
+  paymentMethod: string | null;
+  priceCents: number;
 }
 
 export interface AutoHandled {
@@ -46,7 +48,7 @@ export interface HomeResponse {
   sessions: DashboardSession[];
   autoHandled: AutoHandled[];
   stats: { firesCount: number; handledCount: number };
-  coach: { timezone: string };
+  coach: { timezone: string; stripeChargesEnabled: boolean };
 }
 
 export interface AuditEntry {
@@ -78,9 +80,14 @@ export interface SettingsResponse {
   phone: string;
   timezone: string;
   stripeAccountId: string | null;
+  stripeChargesEnabled: boolean;
+  stripeOnboardingDone: boolean;
+  defaultRateCents: number;
   autonomyEnabled: boolean;
   agentPaused: boolean;
 }
+
+export type PaymentMethod = 'CASH' | 'STRIPE' | 'VENMO' | 'ZELLE' | 'CHECK' | 'OTHER';
 
 export interface WeekSession {
   id: string;
@@ -102,6 +109,7 @@ export interface KidOption {
   id: string;
   name: string;
   parentName: string;
+  rateCentsOverride: number | null;
 }
 
 export interface ParentSessionResponse {
@@ -152,7 +160,7 @@ export const api = {
   audit: () => apiFetch<AuditEntry[]>('/api/dashboard/audit'),
   parents: () => apiFetch<ParentEntry[]>('/api/dashboard/parents'),
   settings: () => apiFetch<SettingsResponse>('/api/dashboard/settings'),
-  updateSettings: (body: { autonomyEnabled: boolean }) =>
+  updateSettings: (body: { autonomyEnabled?: boolean; defaultRateCents?: number }) =>
     apiFetch<SettingsResponse>('/api/dashboard/settings', {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -178,6 +186,11 @@ export const api = {
   getWeekSessions: (weekStart?: string) => apiFetch<WeekSession[]>(`/api/dashboard/sessions/week${weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : ''}`),
   getAvailability: (weekStart?: string) => apiFetch<AvailabilitySlot[]>(`/api/dashboard/availability${weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : ''}`),
   getKids: () => apiFetch<KidOption[]>('/api/dashboard/kids'),
+  updateKidRate: (id: string, rateCentsOverride: number | null) =>
+    apiFetch<{ id: string; rateCentsOverride: number | null }>(`/api/dashboard/kids/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rateCentsOverride }),
+    }),
   addAvailability: (startAt: string, endAt: string) =>
     apiFetch<AvailabilitySlot>('/api/dashboard/availability', {
       method: 'POST',
@@ -187,6 +200,17 @@ export const api = {
     apiFetch<void>(`/api/dashboard/availability/${id}`, { method: 'DELETE' }),
   cancelSession: (id: string) =>
     apiFetch<void>(`/api/dashboard/sessions/${id}`, { method: 'DELETE' }),
+  markSessionPaid: (id: string, body: { method: PaymentMethod; notes?: string }) =>
+    apiFetch<void>(`/api/dashboard/sessions/${id}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  sendPaymentLink: (sessionId: string) =>
+    apiFetch<{ ok: true }>(`/api/dashboard/sessions/${sessionId}/payment-link`, { method: 'POST' }),
+  startStripeOnboarding: () =>
+    apiFetch<{ url: string }>('/api/dashboard/stripe/onboard', { method: 'POST' }),
+  refreshStripe: () =>
+    apiFetch<SettingsResponse>('/api/dashboard/stripe/refresh', { method: 'POST' }),
   createSession: (input: { kidId: string; scheduledAt: string; durationMinutes: number }) =>
     apiFetch<{ id: string }>('/api/dashboard/sessions', {
       method: 'POST',

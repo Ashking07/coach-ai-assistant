@@ -3,6 +3,7 @@ import { ApprovalStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { PrismaService } from '../../prisma.service';
+import { StripeService } from '../stripe/stripe.service';
 import { ChannelSenderRegistry } from '../agent/channels/channel-sender.registry';
 import { LLM_CLIENT } from '../agent/llm/llm.constants';
 import type { LlmClient } from '../agent/llm/llm.client';
@@ -55,6 +56,8 @@ export interface SessionDto {
   duration: string;
   note: string;
   paid: boolean;
+  paymentMethod: string | null;
+  priceCents: number;
 }
 
 export interface AutoHandledDto {
@@ -72,7 +75,7 @@ export interface HomeResponseDto {
   sessions: SessionDto[];
   autoHandled: AutoHandledDto[];
   stats: { firesCount: number; handledCount: number };
-  coach: { timezone: string };
+  coach: { timezone: string; stripeChargesEnabled: boolean };
 }
 
 export interface AuditEntryDto {
@@ -104,6 +107,9 @@ export interface SettingsDto {
   phone: string;
   timezone: string;
   stripeAccountId: string | null;
+  stripeChargesEnabled: boolean;
+  stripeOnboardingDone: boolean;
+  defaultRateCents: number;
   autonomyEnabled: boolean;
   agentPaused: boolean;
 }
@@ -167,6 +173,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly channelSenderRegistry: ChannelSenderRegistry,
+    private readonly stripeService: StripeService,
     @Inject(LLM_CLIENT) private readonly llm: LlmClient,
     @Inject(OBS_EMITTER) private readonly obs: ObsEmitterPort,
   ) {}
@@ -176,7 +183,7 @@ export class DashboardService {
 
     const coach = await this.prisma.coach.findUniqueOrThrow({
       where: { id: coachId },
-      select: { timezone: true },
+      select: { timezone: true, stripeChargesEnabled: true },
     });
     const { start, end } = todayBoundsForTZ(coach.timezone);
 
@@ -270,6 +277,8 @@ export class DashboardService {
       duration: `${s.durationMinutes}m`,
       note: s.coachNotes,
       paid: s.paid,
+      paymentMethod: s.paymentMethod ?? null,
+      priceCents: s.priceCents,
     }));
 
     const autoHandled: AutoHandledDto[] = autoHandledDecisions.map((d) => ({
@@ -287,7 +296,7 @@ export class DashboardService {
       sessions,
       autoHandled,
       stats: { firesCount: fires.length, handledCount },
-      coach: { timezone: coach.timezone },
+      coach: { timezone: coach.timezone, stripeChargesEnabled: coach.stripeChargesEnabled },
     };
   }
 
@@ -354,6 +363,9 @@ export class DashboardService {
       phone: coach.phone,
       timezone: coach.timezone,
       stripeAccountId: coach.stripeAccountId,
+      stripeChargesEnabled: coach.stripeChargesEnabled,
+      stripeOnboardingDone: coach.stripeOnboardingDone,
+      defaultRateCents: coach.defaultRateCents,
       autonomyEnabled: coach.autonomyEnabled,
       agentPaused: coach.agentPaused,
     };
@@ -361,11 +373,14 @@ export class DashboardService {
 
   async updateSettings(
     coachId: string,
-    body: { autonomyEnabled: boolean },
+    body: { autonomyEnabled?: boolean; defaultRateCents?: number },
   ): Promise<SettingsDto> {
     const coach = await this.prisma.coach.update({
       where: { id: coachId },
-      data: { autonomyEnabled: body.autonomyEnabled },
+      data: {
+        ...(body.autonomyEnabled !== undefined ? { autonomyEnabled: body.autonomyEnabled } : {}),
+        ...(body.defaultRateCents !== undefined ? { defaultRateCents: body.defaultRateCents } : {}),
+      },
     });
     return {
       id: coach.id,
@@ -373,6 +388,9 @@ export class DashboardService {
       phone: coach.phone,
       timezone: coach.timezone,
       stripeAccountId: coach.stripeAccountId,
+      stripeChargesEnabled: coach.stripeChargesEnabled,
+      stripeOnboardingDone: coach.stripeOnboardingDone,
+      defaultRateCents: coach.defaultRateCents,
       autonomyEnabled: coach.autonomyEnabled,
       agentPaused: coach.agentPaused,
     };
@@ -390,6 +408,9 @@ export class DashboardService {
       phone: coach.phone,
       timezone: coach.timezone,
       stripeAccountId: coach.stripeAccountId,
+      stripeChargesEnabled: coach.stripeChargesEnabled,
+      stripeOnboardingDone: coach.stripeOnboardingDone,
+      defaultRateCents: coach.defaultRateCents,
       autonomyEnabled: coach.autonomyEnabled,
       agentPaused: coach.agentPaused,
     };
@@ -407,6 +428,9 @@ export class DashboardService {
       phone: coach.phone,
       timezone: coach.timezone,
       stripeAccountId: coach.stripeAccountId,
+      stripeChargesEnabled: coach.stripeChargesEnabled,
+      stripeOnboardingDone: coach.stripeOnboardingDone,
+      defaultRateCents: coach.defaultRateCents,
       autonomyEnabled: coach.autonomyEnabled,
       agentPaused: coach.agentPaused,
     };
@@ -437,6 +461,46 @@ export class DashboardService {
               },
             }),
         );
+
+        if (updated.kind === 'PAYMENT_REQUEST') {
+          if (!updated.sessionId) {
+            throw new BadRequestException('Payment request missing session');
+          }
+          const { url } = await this.stripeService.createCheckoutForSession(updated.sessionId, coachId);
+          const session = await this.prisma.session.findFirst({
+            where: { id: updated.sessionId, coachId },
+            include: { kid: { include: { parent: true } } },
+          });
+          if (!session) {
+            throw new NotFoundException('Session not found');
+          }
+
+          const body = updated.draftReply.includes('{{PAYMENT_LINK}}')
+            ? updated.draftReply.replace('{{PAYMENT_LINK}}', url)
+            : `${updated.draftReply}\n\nPay here: ${url}`;
+
+          const outboundId = randomUUID();
+          await this.prisma.message.create({
+            data: {
+              coachId,
+              parentId: session.kid.parentId,
+              direction: 'OUTBOUND',
+              channel: session.kid.parent.preferredChannel,
+              providerMessageId: outboundId,
+              content: body,
+              receivedAt: new Date(),
+            },
+          });
+
+          const sender = this.channelSenderRegistry.get(session.kid.parent.preferredChannel);
+          await sender.send({
+            coachId,
+            messageId: outboundId,
+            parentId: session.kid.parentId,
+            content: body,
+          });
+          return;
+        }
 
         const content = updated.draftReply;
         const { parentId, channel } = updated.message;
@@ -861,8 +925,12 @@ export class DashboardService {
     const overlapWindowEnd = new Date(scheduledAt.getTime() + durationMs);
 
     const created = await this.prisma.$transaction(async (tx) => {
-      const kid = await tx.kid.findFirst({ where: { id: kidId, coachId } });
+      const kid = await tx.kid.findFirst({
+        where: { id: kidId, coachId },
+        include: { coach: { select: { defaultRateCents: true } } },
+      });
       if (!kid) throw new NotFoundException('Kid not found');
+      const priceCents = kid.rateCentsOverride ?? kid.coach.defaultRateCents;
 
       const candidates = await tx.session.findMany({
         where: {
@@ -887,6 +955,7 @@ export class DashboardService {
           kidId,
           scheduledAt,
           durationMinutes,
+          priceCents,
           status: 'CONFIRMED',
         },
       });
@@ -907,13 +976,113 @@ export class DashboardService {
     return { id: created.id };
   }
 
-  async getKids(coachId: string): Promise<{ id: string; name: string; parentName: string }[]> {
+  async markSessionPaid(
+    coachId: string,
+    sessionId: string,
+    method: 'CASH' | 'VENMO' | 'ZELLE' | 'CHECK' | 'OTHER',
+    notes?: string,
+  ): Promise<void> {
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const session = await tx.session.findFirst({
+        where: { id: sessionId, coachId },
+        select: { id: true, paid: true, priceCents: true },
+      });
+      if (!session) throw new NotFoundException('Session not found');
+      if (session.paid) throw new ConflictException('Session already paid');
+
+      await tx.session.update({
+        where: { id: sessionId },
+        data: { paid: true, paymentMethod: method, paidAt: now },
+      });
+
+      await tx.payment.create({
+        data: {
+          coachId,
+          sessionId,
+          amountCents: session.priceCents,
+          method,
+          status: 'PAID',
+          recordedBy: 'coach',
+          paidAt: now,
+          notes: notes ?? '',
+        },
+      });
+    });
+  }
+
+  async sendPaymentLink(coachId: string, sessionId: string): Promise<{ ok: true }> {
+    const coach = await this.prisma.coach.findUnique({
+      where: { id: coachId },
+      select: { stripeChargesEnabled: true },
+    });
+    if (!coach?.stripeChargesEnabled) {
+      throw new BadRequestException('Stripe is not connected — complete onboarding in Settings first');
+    }
+
+    const session = await this.prisma.session.findFirst({
+      where: { id: sessionId, coachId },
+      include: { kid: { include: { parent: true } } },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+    if (session.paid) throw new ConflictException('Session is already marked paid');
+    if (session.priceCents <= 0) throw new BadRequestException('Set a session price in Settings before sending a payment link');
+
+    const { url } = await this.stripeService.createCheckoutForSession(sessionId, coachId);
+
+    const label = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    }).format(session.scheduledAt);
+    const kidName = session.kid.name;
+    const parentFirstName = session.kid.parent.name.split(' ')[0];
+    const body = `Hi ${parentFirstName}! Here's your payment link for ${kidName}'s session on ${label}: ${url}`;
+
+    const sender = this.channelSenderRegistry.get(session.kid.parent.preferredChannel);
+    const outboundId = randomUUID();
+    await this.prisma.message.create({
+      data: {
+        coachId,
+        parentId: session.kid.parentId,
+        direction: 'OUTBOUND',
+        channel: session.kid.parent.preferredChannel,
+        providerMessageId: outboundId,
+        content: body,
+        receivedAt: new Date(),
+      },
+    });
+    await sender.send({ coachId, messageId: outboundId, parentId: session.kid.parentId, content: body });
+    this.logger.log({ event: 'PAYMENT_LINK_SENT', coachId, sessionId });
+    return { ok: true };
+  }
+
+  async getKids(coachId: string): Promise<{ id: string; name: string; parentName: string; rateCentsOverride: number | null }[]> {
     const kids = await this.prisma.kid.findMany({
       where: { coachId },
       include: { parent: { select: { name: true } } },
       orderBy: { name: 'asc' },
     });
-    return kids.map((k) => ({ id: k.id, name: k.name, parentName: k.parent?.name ?? 'Unknown parent' }));
+    return kids.map((k) => ({
+      id: k.id,
+      name: k.name,
+      parentName: k.parent?.name ?? 'Unknown parent',
+      rateCentsOverride: k.rateCentsOverride ?? null,
+    }));
+  }
+
+  async updateKidRate(
+    coachId: string,
+    kidId: string,
+    rateCentsOverride: number | null,
+  ): Promise<{ id: string; rateCentsOverride: number | null }> {
+    const kid = await this.prisma.kid.findFirst({ where: { id: kidId, coachId } });
+    if (!kid) throw new NotFoundException('Kid not found');
+    const updated = await this.prisma.kid.update({
+      where: { id: kidId },
+      data: { rateCentsOverride },
+      select: { id: true, rateCentsOverride: true },
+    });
+    return updated;
   }
 
   async createSessionRecap(
