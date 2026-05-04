@@ -341,6 +341,22 @@ export class MessagesService {
           tier = validation.tier;
         }
 
+        // Stage 6.5: cancel-id fallback. If the model returned no cancel_session_id
+        // for a CANCEL intent but the parent only has one upcoming session, infer it.
+        // Multi-session ambiguity is left to the model — we won't guess.
+        if (
+          classifyResult.intent === 'CANCEL' &&
+          !draftResult.cancelSessionId &&
+          context.upcomingSessions.length === 1
+        ) {
+          draftResult.cancelSessionId = context.upcomingSessions[0].id;
+          this.logger.log({
+            event: 'CANCEL_SESSION_ID_INFERRED',
+            messageId: message.id,
+            sessionId: draftResult.cancelSessionId,
+          });
+        }
+
         // Stage 7: send / queue / escalate
         const outboundParams = {
           coachId: message.coachId,
@@ -350,8 +366,10 @@ export class MessagesService {
           classifyResult,
           draftResult,
         };
-        // Capture parent notes onto the next upcoming session regardless of send tier
-        if (draftResult.sessionNote) {
+        // Capture parent notes onto the next upcoming session regardless of send tier.
+        // Skip for CANCEL — drafter shouldn't be writing notes on cancelled sessions,
+        // and the prompt already steers it away from this, but belt-and-suspenders.
+        if (draftResult.sessionNote && classifyResult.intent !== 'CANCEL') {
           await this.appendSessionNote(
             message.coachId,
             context.kids,
