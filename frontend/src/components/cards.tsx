@@ -1,4 +1,4 @@
-import { ChevronRight, Mic } from 'lucide-react';
+import { ChevronRight, Mic, Trash2 } from 'lucide-react';
 import { T } from '../tokens';
 import { IntentBadge, TierBadge } from './badges';
 import { KidAvatar } from './avatar';
@@ -159,13 +159,28 @@ import { useEffect, useState } from 'react';
 import { useRecapRecorder } from '../lib/voice/use-recap-recorder';
 import { RecapRecorderOverlay } from './recap/recap-recorder-overlay';
 
-export function SessionCard({ session, onOpen }: { session: DashboardSession; onOpen: () => void }) {
+export function SessionCard({
+  session,
+  onOpen,
+  onDelete,
+}: {
+  session: DashboardSession;
+  onOpen: () => void;
+  onDelete?: (id: string) => void;
+}) {
   const recap = useRecapRecorder(session.id);
   const [showOverlay, setShowOverlay] = useState(false);
 
   const handleMicClick = () => {
     setShowOverlay(true);
     recap.startRecording();
+  };
+
+  const handleDeleteClick = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    if (!onDelete) return;
+    const ok = window.confirm(`Cancel ${session.kid}'s ${session.time} session?`);
+    if (ok) onDelete(session.id);
   };
 
   const handleOverlayClose = () => {
@@ -207,19 +222,36 @@ export function SessionCard({ session, onOpen }: { session: DashboardSession; on
           >
             Open <ChevronRight size={14} />
           </div>
-          <button
-            onClick={handleMicClick}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{
-              background: 'transparent',
-              color: 'var(--muted)',
-              border: '1px solid transparent',
-              cursor: 'pointer',
-            }}
-            title="Record session recap"
-          >
-            <Mic size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {onDelete && (
+              <button
+                onClick={handleDeleteClick}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{
+                  background: 'transparent',
+                  color: 'var(--muted)',
+                  border: '1px solid transparent',
+                  cursor: 'pointer',
+                }}
+                title="Cancel session"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+            <button
+              onClick={handleMicClick}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{
+                background: 'transparent',
+                color: 'var(--muted)',
+                border: '1px solid transparent',
+                cursor: 'pointer',
+              }}
+              title="Record session recap"
+            >
+              <Mic size={16} />
+            </button>
+          </div>
         </div>
       </div>
       {showOverlay && (

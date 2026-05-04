@@ -172,6 +172,25 @@ export function WeekView({
     onSettled: () => queryClient.invalidateQueries({ queryKey: availKey }),
   });
 
+  const sessionsKey = ['week-sessions', weekStartIso];
+  const cancelSessionMutation = useMutation({
+    mutationFn: (id: string) => api.cancelSession(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: sessionsKey });
+      const prev = queryClient.getQueryData<WeekSession[]>(sessionsKey) ?? [];
+      queryClient.setQueryData(sessionsKey, prev.filter((s) => s.id !== id));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(sessionsKey, ctx.prev);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: sessionsKey });
+      queryClient.invalidateQueries({ queryKey: availKey });
+      queryClient.invalidateQueries({ queryKey: ['home'] });
+    },
+  });
+
   // Merge static blocked + real DB sessions + DB available slots
   const sessionBlocks: Block[] = dbSessions
     .map((s) => sessionToBlock(s, monday))
@@ -304,7 +323,12 @@ export function WeekView({
                 {sessions.length > 0 && (
                   <div className="p-3 flex gap-3 overflow-x-auto">
                     {sessions.map((s) => (
-                      <SessionCard key={s.id} session={s} onOpen={() => onOpenSession?.(s.id)} />
+                      <SessionCard
+                        key={s.id}
+                        session={s}
+                        onOpen={() => onOpenSession?.(s.id)}
+                        onDelete={(id) => cancelSessionMutation.mutate(id)}
+                      />
                     ))}
                   </div>
                 )}
