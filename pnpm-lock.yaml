@@ -43,6 +43,9 @@ importers:
       '@veriops/sdk-js':
         specifier: ^0.1.8
         version: 0.1.8
+      body-parser:
+        specifier: ^2.2.2
+        version: 2.2.2
       bullmq:
         specifier: ^5.75.2
         version: 5.75.2
@@ -89,6 +92,9 @@ importers:
       '@nestjs/testing':
         specifier: ^11.0.1
         version: 11.1.19(@nestjs/common@11.1.19(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.19)(@nestjs/platform-express@11.1.19)
+      '@types/body-parser':
+        specifier: ^1.19.6
+        version: 1.19.6
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6

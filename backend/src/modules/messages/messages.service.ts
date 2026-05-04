@@ -447,6 +447,16 @@ export class MessagesService {
       return;
     }
 
+    const kid = await this.prisma.kid.findFirst({
+      where: { id: kidId, coachId },
+      include: { coach: { select: { defaultRateCents: true } } },
+    });
+    if (!kid) {
+      this.logger.warn({ event: 'CONFIRM_BOOKING_KID_NOT_FOUND', parentId, kidId });
+      return;
+    }
+    const priceCents = kid.rateCentsOverride ?? kid.coach.defaultRateCents;
+
     // Tolerate up to 2-minute drift when matching the availability slot
     const slotWindowStart = new Date(scheduledAt.getTime() - 2 * 60 * 1000);
     const slotWindowEnd = new Date(scheduledAt.getTime() + 2 * 60 * 1000);
@@ -459,6 +469,7 @@ export class MessagesService {
             kidId,
             scheduledAt,
             durationMinutes: 60,
+            priceCents,
             status: 'CONFIRMED',
           },
         }),

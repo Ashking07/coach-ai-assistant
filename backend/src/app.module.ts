@@ -12,6 +12,7 @@ import { TelnyxModule } from './modules/telnyx/telnyx.module';
 import { DemoChatModule } from './modules/demo-chat/demo-chat.module';
 import { VoiceModule } from './modules/voice/voice.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
+import { StripeModule } from './modules/stripe/stripe.module';
 import { validateEnv } from './common/env.validation';
 
 @Module({
@@ -30,6 +31,7 @@ import { validateEnv } from './common/env.validation';
     TelnyxModule,
     DemoChatModule,
     VoiceModule,
+    StripeModule,
   ],
   controllers: [AppController],
   providers: [

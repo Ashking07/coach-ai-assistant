@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
+import { raw } from 'body-parser';
 import { AppModule } from './app.module';
 import { DemoWebChatGateway } from './modules/demo-chat/web-chat.gateway';
 import { VoiceGateway } from './modules/voice/voice.gateway';
@@ -12,6 +13,8 @@ import {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use('/api/stripe/webhook', raw({ type: 'application/json' }));
 
   const allowedOrigins = (
     process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:5174'

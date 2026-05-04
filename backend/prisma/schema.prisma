@@ -28,6 +28,18 @@ enum SessionStatus {
 enum PaymentMethod {
   CASH
   STRIPE
+  VENMO
+  ZELLE
+  CHECK
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+  CANCELLED
 }
 
 enum Intent {
@@ -58,6 +70,12 @@ enum ApprovalStatus {
   EXPIRED
 }
 
+enum ApprovalKind {
+  REPLY
+  PAYMENT_REQUEST
+  RECAP
+}
+
 enum ActionTaken {
   AUTO_SENT
   QUEUED_FOR_APPROVAL
@@ -74,7 +92,10 @@ model Coach {
   name             String
   phone            String
   timezone         String   @default("America/Los_Angeles")
+  defaultRateCents       Int      @default(8000)
   stripeAccountId  String?
+  stripeChargesEnabled   Boolean  @default(false)
+  stripeOnboardingDone   Boolean  @default(false)
   autonomyEnabled  Boolean  @default(true)
   agentPaused      Boolean  @default(false)
   createdAt        DateTime @default(now())
@@ -86,6 +107,7 @@ model Coach {
   messages         Message[]
   agentDecisions   AgentDecision[]
   approvals        ApprovalQueue[]
+  payments         Payment[]
 }
 
 model Parent {
@@ -112,6 +134,7 @@ model Kid {
   name      String
   age       Int
   notes     String   @default("")
+  rateCentsOverride Int?
   createdAt DateTime @default(now())
 
   coach     Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
@@ -128,14 +151,18 @@ model Session {
   kidId           String
   scheduledAt     DateTime
   durationMinutes Int           @default(60)
+  priceCents       Int           @default(0)
   status          SessionStatus @default(PROPOSED)
   paid            Boolean       @default(false)
   paymentMethod   PaymentMethod?
+  paidAt           DateTime?
   coachNotes      String        @default("")
   createdAt       DateTime      @default(now())
 
   coach           Coach         @relation(fields: [coachId], references: [id], onDelete: Cascade)
   kid             Kid           @relation(fields: [kidId], references: [id], onDelete: Cascade)
+  payments         Payment[]
+  approvals        ApprovalQueue[]
 
   @@index([coachId, scheduledAt])
   @@index([kidId])
@@ -206,6 +233,8 @@ model ApprovalQueue {
   messageId       String
   draftReply      String
   cancelSessionId String?
+  sessionId        String?
+  kind             ApprovalKind @default(REPLY)
   status          ApprovalStatus @default(PENDING)
   createdAt       DateTime       @default(now())
   resolvedAt      DateTime?
@@ -213,7 +242,32 @@ model ApprovalQueue {
 
   coach           Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
   message         Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  session         Session?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([coachId, status])
   @@index([messageId])
+  @@index([sessionId])
+}
+
+model Payment {
+  id                  String         @id @default(cuid())
+  coachId             String
+  sessionId           String
+  amountCents         Int
+  method              PaymentMethod
+  status              PaymentStatus  @default(PENDING)
+  stripeCheckoutId    String?        @unique
+  stripePaymentIntent String?        @unique
+  stripeEventId       String?        @unique
+  recordedBy          String
+  createdAt           DateTime       @default(now())
+  paidAt              DateTime?
+  refundedAt          DateTime?
+  notes               String         @default("")
+
+  coach               Coach          @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  session             Session        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([coachId, createdAt])
+  @@index([sessionId])
 }
