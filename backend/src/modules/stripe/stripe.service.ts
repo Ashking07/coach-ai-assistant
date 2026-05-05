@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../../prisma.service';
+import { ChannelSenderRegistry } from '../agent/channels/channel-sender.registry';
 
 @Injectable()
 export class StripeService {
@@ -18,6 +19,7 @@ export class StripeService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly channelSenders: ChannelSenderRegistry,
   ) {
     const secretKey = this.config.get<string>('STRIPE_SECRET_KEY');
     const backendBase =
@@ -238,5 +240,53 @@ export class StripeService {
     }
 
     return { url: checkout.url, checkoutId: checkout.id };
+  }
+
+  async sendPaymentReceipt(checkoutSessionId: string): Promise<void> {
+    const payment = await this.prisma.payment.findFirst({
+      where: { stripeCheckoutId: checkoutSessionId },
+      include: {
+        session: {
+          include: {
+            kid: { include: { parent: true } },
+            coach: { select: { id: true, timezone: true } },
+          },
+        },
+      },
+    });
+
+    if (!payment?.session) {
+      this.logger.warn({ event: 'RECEIPT_SESSION_NOT_FOUND', checkoutSessionId });
+      return;
+    }
+
+    const { session } = payment;
+    const { kid } = session;
+    const { parent } = kid;
+
+    const dateStr = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: session.coach?.timezone ?? 'America/Los_Angeles',
+    }).format(session.scheduledAt);
+
+    const amount = `$${(payment.amountCents / 100).toFixed(2)}`;
+    const body = `Payment received! ✓ ${amount} for ${kid.name}'s session on ${dateStr}. Thank you!`;
+
+    try {
+      const sender = this.channelSenders.get(parent.preferredChannel);
+      await sender.send({
+        coachId: session.coachId,
+        messageId: `receipt-${checkoutSessionId}`,
+        parentId: parent.id,
+        content: body,
+      });
+      this.logger.log({ event: 'RECEIPT_SENT', checkoutSessionId, parentId: parent.id });
+    } catch (err) {
+      this.logger.error({ event: 'RECEIPT_SEND_FAILED', checkoutSessionId, err });
+    }
   }
 }

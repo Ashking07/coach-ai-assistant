@@ -11,6 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../../prisma.service';
+import { StripeService } from './stripe.service';
 import type { Request, Response } from 'express';
 
 type StripeRequest = Request & { body: Buffer };
@@ -24,6 +25,7 @@ export class StripeWebhookController {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly stripeService: StripeService,
   ) {
     this.secretKey = this.config.get<string>('STRIPE_SECRET_KEY');
     this.secret = this.config.get<string>('STRIPE_WEBHOOK_SECRET');
@@ -63,6 +65,8 @@ export class StripeWebhookController {
               data: { paid: true, paymentMethod: 'STRIPE', paidAt: new Date() },
             }),
           ]);
+          // Fire-and-forget: send receipt to parent; never block the redirect
+          void this.stripeService.sendPaymentReceipt(checkoutSessionId);
         }
       } catch {
         // webhook handles the authoritative mark-paid; don't fail the redirect
@@ -135,6 +139,15 @@ export class StripeWebhookController {
             data: { paid: true, paymentMethod: 'STRIPE', paidAt: new Date() },
           });
         });
+
+        // Send receipt only if return-url didn't already handle it
+        const paid = await this.prisma.payment.findFirst({
+          where: { stripeCheckoutId: session.id },
+          select: { recordedBy: true },
+        });
+        if (paid?.recordedBy !== 'return-url') {
+          void this.stripeService.sendPaymentReceipt(session.id);
+        }
       }
     }
 
