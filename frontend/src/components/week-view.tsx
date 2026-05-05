@@ -594,7 +594,7 @@ function DayDetailSheet({
               const isSending = paymentLinkSendingId === block.sessionId;
               const isSent = paymentLinkSentIds?.has(block.sessionId!);
               const isFailed = paymentLinkFailedIds?.has(block.sessionId!);
-              const btnColor = isSent ? T.moss : isFailed ? T.terracotta : stripeConnected ? T.sunrise : 'var(--muted)';
+              const btnColor = isSent ? T.moss : isFailed ? T.terracotta : T.sunrise;
               content = (
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center">
@@ -607,21 +607,19 @@ function DayDetailSheet({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (stripeConnected && !isSending && !isSent) onSendPaymentLink?.(block.sessionId!);
+                        if (!isSending && !isSent) onSendPaymentLink?.(block.sessionId!);
                       }}
-                      disabled={!stripeConnected || isSending || isSent}
+                      disabled={isSending || isSent}
                       className="px-2 py-0.5 rounded-lg"
                       style={{
                         background: btnColor + '22',
                         border: `1px solid ${btnColor}55`,
                         color: btnColor,
                         fontSize: 11,
-                        cursor: stripeConnected && !isSending && !isSent ? 'pointer' : 'default',
+                        cursor: isSending || isSent ? 'default' : 'pointer',
                         flexShrink: 0,
-                        opacity: !stripeConnected ? 0.55 : 1,
                         transition: 'all 0.2s',
                       }}
-                      title={!stripeConnected ? 'Connect Stripe in Settings first' : isSent ? 'Payment link sent' : isFailed ? 'Failed — tap to retry' : 'Send Stripe payment link'}
                     >
                       {isSent ? 'Sent ✓' : isSending ? 'Sending…' : isFailed ? 'Retry' : 'Send link'}
                     </button>
