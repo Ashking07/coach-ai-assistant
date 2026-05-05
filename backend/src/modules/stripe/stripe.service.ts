@@ -104,6 +104,14 @@ export class StripeService {
       throw new BadRequestException('Stripe account not connected');
     }
 
+    // Ensure capabilities are requested (idempotent — safe to call every time)
+    await stripe.accounts.update(coach.stripeAccountId, {
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+    });
+
     const account = await stripe.accounts.retrieve(coach.stripeAccountId);
     await this.prisma.coach.update({
       where: { id: coachId },
