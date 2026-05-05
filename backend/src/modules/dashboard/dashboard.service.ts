@@ -251,7 +251,7 @@ export class DashboardService {
       kid: firstKid(d.message.parent.kids),
       reason: d.actionTaken,
       ago: toAgo(d.createdAt),
-      preview: d.message.content.slice(0, 120),
+      preview: d.message.content.length > 160 ? d.message.content.slice(0, 160) + '…' : d.message.content,
       intent: d.intent,
     }));
 
@@ -266,7 +266,7 @@ export class DashboardService {
         draft: a.draftReply,
         confidence: decision?.confidence ?? 0,
         ago: toAgo(a.createdAt),
-        reason: decision?.reasoning?.slice(0, 120) ?? '',
+        reason: decision?.reasoning ?? '',
       };
     });
 

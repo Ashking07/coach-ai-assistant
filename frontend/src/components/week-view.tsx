@@ -465,7 +465,6 @@ export function WeekView({
           onClose={() => setOpenDay(null)}
           onToggle={(start) => toggle(openDay, start)}
           onAddSession={() => setAddSessionDate(getDayDateObj(monday, openDay))}
-          stripeConnected={stripeConnected}
           onSendPaymentLink={(id) => sendPaymentLinkMutation.mutate(id)}
           paymentLinkSendingId={sendPaymentLinkMutation.isPending ? sendPaymentLinkMutation.variables : undefined}
           paymentLinkSentIds={sentPaymentLinkIds}
@@ -496,7 +495,6 @@ function DayDetailSheet({
   onClose,
   onToggle,
   onAddSession,
-  stripeConnected,
   onSendPaymentLink,
   paymentLinkSendingId,
   paymentLinkSentIds,
@@ -510,7 +508,6 @@ function DayDetailSheet({
   onClose: () => void;
   onToggle: (slotStart: number) => void;
   onAddSession: () => void;
-  stripeConnected?: boolean;
   onSendPaymentLink?: (sessionId: string) => void;
   paymentLinkSendingId?: string;
   paymentLinkSentIds?: Set<string>;
