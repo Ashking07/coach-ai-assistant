@@ -211,12 +211,17 @@ export function WeekView({
   });
 
   const [sentPaymentLinkIds, setSentPaymentLinkIds] = useState<Set<string>>(new Set());
+  const [failedPaymentLinkIds, setFailedPaymentLinkIds] = useState<Set<string>>(new Set());
 
   const sendPaymentLinkMutation = useMutation({
     mutationFn: (sessionId: string) => api.sendPaymentLink(sessionId),
     onSuccess: (_data, sessionId) => {
       setSentPaymentLinkIds((prev) => new Set([...prev, sessionId]));
+      setFailedPaymentLinkIds((prev) => { const next = new Set(prev); next.delete(sessionId); return next; });
       queryClient.invalidateQueries({ queryKey: sessionsKey });
+    },
+    onError: (_err, sessionId) => {
+      setFailedPaymentLinkIds((prev) => new Set([...prev, sessionId]));
     },
   });
 
@@ -464,6 +469,7 @@ export function WeekView({
           onSendPaymentLink={(id) => sendPaymentLinkMutation.mutate(id)}
           paymentLinkSendingId={sendPaymentLinkMutation.isPending ? sendPaymentLinkMutation.variables : undefined}
           paymentLinkSentIds={sentPaymentLinkIds}
+          paymentLinkFailedIds={failedPaymentLinkIds}
         />
       )}
 
@@ -494,6 +500,7 @@ function DayDetailSheet({
   onSendPaymentLink,
   paymentLinkSendingId,
   paymentLinkSentIds,
+  paymentLinkFailedIds,
 }: {
   day: number;
   dateNum: number;
@@ -507,6 +514,7 @@ function DayDetailSheet({
   onSendPaymentLink?: (sessionId: string) => void;
   paymentLinkSendingId?: string;
   paymentLinkSentIds?: Set<string>;
+  paymentLinkFailedIds?: Set<string>;
 }) {
   const slots: number[] = [];
   for (let m = HOUR_START * 60; m < HOUR_END * 60; m += 30) slots.push(m);
@@ -585,6 +593,8 @@ function DayDetailSheet({
               const showPayLink = !block.paid && (block.priceCents ?? 0) > 0 && block.sessionId;
               const isSending = paymentLinkSendingId === block.sessionId;
               const isSent = paymentLinkSentIds?.has(block.sessionId!);
+              const isFailed = paymentLinkFailedIds?.has(block.sessionId!);
+              const btnColor = isSent ? T.moss : isFailed ? T.terracotta : stripeConnected ? T.sunrise : 'var(--muted)';
               content = (
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center">
@@ -602,18 +612,18 @@ function DayDetailSheet({
                       disabled={!stripeConnected || isSending || isSent}
                       className="px-2 py-0.5 rounded-lg"
                       style={{
-                        background: isSent ? T.moss + '22' : stripeConnected ? T.sunrise + '22' : 'var(--hairline)',
-                        border: `1px solid ${isSent ? T.moss + '55' : stripeConnected ? T.sunrise + '55' : 'var(--hairline)'}`,
-                        color: isSent ? T.moss : stripeConnected ? T.sunrise : 'var(--muted)',
+                        background: btnColor + '22',
+                        border: `1px solid ${btnColor}55`,
+                        color: btnColor,
                         fontSize: 11,
                         cursor: stripeConnected && !isSending && !isSent ? 'pointer' : 'default',
                         flexShrink: 0,
                         opacity: !stripeConnected ? 0.55 : 1,
                         transition: 'all 0.2s',
                       }}
-                      title={!stripeConnected ? 'Connect Stripe in Settings first' : isSent ? 'Payment link sent' : 'Send Stripe payment link'}
+                      title={!stripeConnected ? 'Connect Stripe in Settings first' : isSent ? 'Payment link sent' : isFailed ? 'Failed — tap to retry' : 'Send Stripe payment link'}
                     >
-                      {isSent ? 'Sent ✓' : isSending ? 'Sending…' : 'Send link'}
+                      {isSent ? 'Sent ✓' : isSending ? 'Sending…' : isFailed ? 'Retry' : 'Send link'}
                     </button>
                   )}
                 </div>
