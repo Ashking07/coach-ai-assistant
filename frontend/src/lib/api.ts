@@ -166,7 +166,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText} — ${path}`);
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json() as { message?: string };
+      if (body?.message) detail = Array.isArray(body.message) ? body.message.join(', ') : String(body.message);
+    } catch { /* non-JSON error body */ }
+    throw new Error(detail);
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;

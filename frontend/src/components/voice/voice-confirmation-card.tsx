@@ -93,6 +93,11 @@ export function VoiceConfirmationCard({
         </div>
         <div style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: '#F7F3EC' }}>{title}</div>
         <div style={{ fontFamily: 'Inter Tight, sans-serif', fontSize: 15, color: '#D4D0C7', whiteSpace: 'pre-wrap' }}>{body}</div>
+        {confirm.error && (
+          <div style={{ fontSize: 13, color: '#E8896A', background: '#E8896A18', border: '1px solid #E8896A30', borderRadius: 10, padding: '8px 12px' }}>
+            {confirm.error.message}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
           <button
             onClick={() => cancel.mutate()}

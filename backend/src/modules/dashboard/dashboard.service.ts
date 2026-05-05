@@ -997,12 +997,13 @@ export class DashboardService {
         select: { id: true, scheduledAt: true, durationMinutes: true },
       });
 
-      const hasOverlap = candidates.some((s) => {
+      const conflicting = candidates.find((s) => {
         const endAt = new Date(s.scheduledAt.getTime() + s.durationMinutes * 60 * 1000);
         return s.scheduledAt < overlapWindowEnd && endAt > scheduledAt;
       });
-      if (hasOverlap) {
-        throw new ConflictException('Session overlaps existing session');
+      if (conflicting) {
+        const t = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(conflicting.scheduledAt);
+        throw new ConflictException(`That slot overlaps a session already scheduled at ${t}`);
       }
 
       const session = await tx.session.create({
