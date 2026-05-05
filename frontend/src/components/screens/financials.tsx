@@ -105,9 +105,9 @@ export function FinancialsScreen() {
       </div>
 
       {isLoading && (
-        <div className="px-4 md:px-8 flex gap-3">
+        <div className="px-4 md:px-8 flex flex-col md:flex-row gap-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="flex-1 rounded-2xl h-28 animate-pulse" style={{ background: 'var(--panel)' }} />
+            <div key={i} className="rounded-2xl h-28 animate-pulse" style={{ background: 'var(--panel)' }} />
           ))}
         </div>
       )}
@@ -123,7 +123,7 @@ export function FinancialsScreen() {
       {data && (
         <>
           {/* Stat tiles */}
-          <div className="px-4 md:px-8 flex gap-3 flex-wrap">
+          <div className="px-4 md:px-8 flex flex-col md:flex-row gap-3">
             <StatTile
               label={monthLabel}
               amount={data.thisMonth.amountCents}

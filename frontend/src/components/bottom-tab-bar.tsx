@@ -18,7 +18,7 @@ export function BottomTabBar({
 }) {
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 flex border-t"
+      className="md:hidden fixed bottom-0 left-0 right-0 flex border-t px-2"
       style={{
         background: 'var(--panel-solid)',
         borderColor: 'var(--hairline)',
@@ -30,18 +30,19 @@ export function BottomTabBar({
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
-          className="flex-1 flex flex-col items-center gap-1 py-3"
+          className="flex-1 flex flex-col items-center gap-0.5 py-2.5"
           style={{
             color: active === t.id ? 'var(--text)' : 'var(--muted)',
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            fontSize: 10,
+            fontSize: 9,
             fontFamily: 'Inter Tight, sans-serif',
+            minWidth: 0,
           }}
         >
           {t.icon}
-          <span>{t.label}</span>
+          <span className="truncate w-full text-center">{t.label}</span>
         </button>
       ))}
     </nav>
