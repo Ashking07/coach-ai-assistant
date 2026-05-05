@@ -21,6 +21,9 @@ type Block = {
   kid?: string;
   reason?: string;
   dbId?: string; // set for DB-backed available blocks
+  sessionId?: string;
+  paid?: boolean;
+  priceCents?: number;
 };
 
 // Static blocked-only blocks (personal calendar events, not sessions)
@@ -83,6 +86,9 @@ function sessionToBlock(session: WeekSession, monday: Date): Block | null {
     end: startMin + session.durationMinutes,
     kind: 'booked',
     kid: session.kidName,
+    sessionId: session.id,
+    paid: session.paid,
+    priceCents: session.priceCents,
   };
 }
 
@@ -202,6 +208,11 @@ export function WeekView({
       queryClient.invalidateQueries({ queryKey: availKey });
       queryClient.invalidateQueries({ queryKey: ['home'] });
     },
+  });
+
+  const sendPaymentLinkMutation = useMutation({
+    mutationFn: (sessionId: string) => api.sendPaymentLink(sessionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: sessionsKey }),
   });
 
   // Merge static blocked + real DB sessions + DB available slots
@@ -444,6 +455,8 @@ export function WeekView({
           onClose={() => setOpenDay(null)}
           onToggle={(start) => toggle(openDay, start)}
           onAddSession={() => setAddSessionDate(getDayDateObj(monday, openDay))}
+          stripeConnected={stripeConnected}
+          onSendPaymentLink={(id) => sendPaymentLinkMutation.mutate(id)}
         />
       )}
 
@@ -470,6 +483,8 @@ function DayDetailSheet({
   onClose,
   onToggle,
   onAddSession,
+  stripeConnected,
+  onSendPaymentLink,
 }: {
   day: number;
   dateNum: number;
@@ -479,6 +494,8 @@ function DayDetailSheet({
   onClose: () => void;
   onToggle: (slotStart: number) => void;
   onAddSession: () => void;
+  stripeConnected?: boolean;
+  onSendPaymentLink?: (sessionId: string) => void;
 }) {
   const slots: number[] = [];
   for (let m = HOUR_START * 60; m < HOUR_END * 60; m += 30) slots.push(m);
@@ -554,13 +571,32 @@ function DayDetailSheet({
             if (block?.kind === 'booked') {
               bg = slotIsPast ? stone + '10' : T.sunrise + '18';
               leftBorderColor = slotIsPast ? stone : T.sunrise;
+              const showPayLink = !block.paid && stripeConnected && (block.priceCents ?? 0) > 0 && block.sessionId;
               content = (
-                <>
-                  <span style={{ color: slotIsPast ? 'var(--muted)' : 'var(--text)', fontSize: 14 }}>{block.kid}</span>
-                  <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: slotIsPast ? 'var(--muted)' : T.sunrise, marginLeft: 8 }}>
-                    {slotIsPast ? 'PAST' : 'SESSION'}
-                  </span>
-                </>
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center">
+                    <span style={{ color: slotIsPast ? 'var(--muted)' : 'var(--text)', fontSize: 14 }}>{block.kid}</span>
+                    <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11, color: block.paid ? T.moss : slotIsPast ? 'var(--muted)' : T.sunrise, marginLeft: 8 }}>
+                      {block.paid ? 'PAID' : slotIsPast ? 'PAST' : 'SESSION'}
+                    </span>
+                  </div>
+                  {showPayLink && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onSendPaymentLink?.(block.sessionId!); }}
+                      className="px-2 py-0.5 rounded-lg"
+                      style={{
+                        background: T.sunrise + '22',
+                        border: `1px solid ${T.sunrise}55`,
+                        color: T.sunrise,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      Send link
+                    </button>
+                  )}
+                </div>
               );
             } else if (block?.kind === 'available') {
               bg = slotIsPast ? stone + '10' : T.moss + '12';

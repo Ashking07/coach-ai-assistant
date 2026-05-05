@@ -95,6 +95,7 @@ export interface WeekSession {
   scheduledAt: string;
   durationMinutes: number;
   paid: boolean;
+  priceCents: number;
 }
 
 export interface AvailabilitySlot {

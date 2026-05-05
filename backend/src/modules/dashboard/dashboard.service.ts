@@ -761,6 +761,7 @@ export class DashboardService {
       scheduledAt: s.scheduledAt.toISOString(),
       durationMinutes: s.durationMinutes,
       paid: s.paid,
+      priceCents: s.priceCents,
     }));
   }
 
