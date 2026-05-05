@@ -210,9 +210,14 @@ export function WeekView({
     },
   });
 
+  const [sentPaymentLinkIds, setSentPaymentLinkIds] = useState<Set<string>>(new Set());
+
   const sendPaymentLinkMutation = useMutation({
     mutationFn: (sessionId: string) => api.sendPaymentLink(sessionId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: sessionsKey }),
+    onSuccess: (_data, sessionId) => {
+      setSentPaymentLinkIds((prev) => new Set([...prev, sessionId]));
+      queryClient.invalidateQueries({ queryKey: sessionsKey });
+    },
   });
 
   // Merge static blocked + real DB sessions + DB available slots
@@ -457,6 +462,8 @@ export function WeekView({
           onAddSession={() => setAddSessionDate(getDayDateObj(monday, openDay))}
           stripeConnected={stripeConnected}
           onSendPaymentLink={(id) => sendPaymentLinkMutation.mutate(id)}
+          paymentLinkSendingId={sendPaymentLinkMutation.isPending ? sendPaymentLinkMutation.variables : undefined}
+          paymentLinkSentIds={sentPaymentLinkIds}
         />
       )}
 
@@ -485,6 +492,8 @@ function DayDetailSheet({
   onAddSession,
   stripeConnected,
   onSendPaymentLink,
+  paymentLinkSendingId,
+  paymentLinkSentIds,
 }: {
   day: number;
   dateNum: number;
@@ -496,6 +505,8 @@ function DayDetailSheet({
   onAddSession: () => void;
   stripeConnected?: boolean;
   onSendPaymentLink?: (sessionId: string) => void;
+  paymentLinkSendingId?: string;
+  paymentLinkSentIds?: Set<string>;
 }) {
   const slots: number[] = [];
   for (let m = HOUR_START * 60; m < HOUR_END * 60; m += 30) slots.push(m);
@@ -572,6 +583,8 @@ function DayDetailSheet({
               bg = slotIsPast ? stone + '10' : T.sunrise + '18';
               leftBorderColor = slotIsPast ? stone : T.sunrise;
               const showPayLink = !block.paid && (block.priceCents ?? 0) > 0 && block.sessionId;
+              const isSending = paymentLinkSendingId === block.sessionId;
+              const isSent = paymentLinkSentIds?.has(block.sessionId!);
               content = (
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center">
@@ -582,21 +595,25 @@ function DayDetailSheet({
                   </div>
                   {showPayLink && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); stripeConnected && onSendPaymentLink?.(block.sessionId!); }}
-                      disabled={!stripeConnected}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (stripeConnected && !isSending && !isSent) onSendPaymentLink?.(block.sessionId!);
+                      }}
+                      disabled={!stripeConnected || isSending || isSent}
                       className="px-2 py-0.5 rounded-lg"
                       style={{
-                        background: stripeConnected ? T.sunrise + '22' : 'var(--hairline)',
-                        border: `1px solid ${stripeConnected ? T.sunrise + '55' : 'var(--hairline)'}`,
-                        color: stripeConnected ? T.sunrise : 'var(--muted)',
+                        background: isSent ? T.moss + '22' : stripeConnected ? T.sunrise + '22' : 'var(--hairline)',
+                        border: `1px solid ${isSent ? T.moss + '55' : stripeConnected ? T.sunrise + '55' : 'var(--hairline)'}`,
+                        color: isSent ? T.moss : stripeConnected ? T.sunrise : 'var(--muted)',
                         fontSize: 11,
-                        cursor: stripeConnected ? 'pointer' : 'default',
+                        cursor: stripeConnected && !isSending && !isSent ? 'pointer' : 'default',
                         flexShrink: 0,
-                        opacity: stripeConnected ? 1 : 0.55,
+                        opacity: !stripeConnected ? 0.55 : 1,
+                        transition: 'all 0.2s',
                       }}
-                      title={!stripeConnected ? 'Connect Stripe in Settings first' : 'Send Stripe payment link'}
+                      title={!stripeConnected ? 'Connect Stripe in Settings first' : isSent ? 'Payment link sent' : 'Send Stripe payment link'}
                     >
-                      Send link
+                      {isSent ? 'Sent ✓' : isSending ? 'Sending…' : 'Send link'}
                     </button>
                   )}
                 </div>
