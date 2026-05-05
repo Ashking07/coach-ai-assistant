@@ -113,6 +113,18 @@ export class StripeService {
     });
 
     const account = await stripe.accounts.retrieve(coach.stripeAccountId);
+
+    this.logger.log({
+      event: 'STRIPE_REFRESH',
+      accountId: coach.stripeAccountId,
+      charges_enabled: account.charges_enabled,
+      payouts_enabled: account.payouts_enabled,
+      details_submitted: account.details_submitted,
+      capabilities: account.capabilities,
+      requirements_currently_due: (account.requirements as { currently_due?: string[] } | null)?.currently_due,
+      requirements_disabled_reason: (account.requirements as { disabled_reason?: string } | null)?.disabled_reason,
+    });
+
     await this.prisma.coach.update({
       where: { id: coachId },
       data: {
@@ -120,6 +132,24 @@ export class StripeService {
         stripeOnboardingDone: account.details_submitted,
       },
     });
+  }
+
+  async getAccountDebug(coachId: string) {
+    const stripe = this.requireStripe();
+    const coach = await this.prisma.coach.findUnique({
+      where: { id: coachId },
+      select: { stripeAccountId: true },
+    });
+    if (!coach?.stripeAccountId) throw new BadRequestException('No Stripe account');
+    const account = await stripe.accounts.retrieve(coach.stripeAccountId);
+    return {
+      id: account.id,
+      charges_enabled: account.charges_enabled,
+      payouts_enabled: account.payouts_enabled,
+      details_submitted: account.details_submitted,
+      capabilities: account.capabilities,
+      requirements: account.requirements,
+    };
   }
 
   async createCheckoutForSession(

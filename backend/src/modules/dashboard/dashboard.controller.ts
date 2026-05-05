@@ -69,6 +69,11 @@ export class DashboardController {
     return this.dashboardService.getSettings(this.guard(token));
   }
 
+  @Get('stripe/debug')
+  async stripeDebug(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.stripeService.getAccountDebug(this.guard(token));
+  }
+
   @Patch('settings')
   updateSettings(
     @Headers('x-dashboard-token') token: string | undefined,
