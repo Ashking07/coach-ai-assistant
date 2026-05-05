@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Home, ListTree, Users, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, ListTree, Users, Settings, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import { T } from '../tokens';
 
-export type Tab = 'home' | 'audit' | 'parents' | 'settings';
+export type Tab = 'home' | 'audit' | 'parents' | 'financials' | 'settings';
 
 const ITEMS: { id: Tab; label: string; Icon: typeof Home }[] = [
-  { id: 'home',     label: 'Home',     Icon: Home     },
-  { id: 'audit',   label: 'Audit',    Icon: ListTree  },
-  { id: 'parents', label: 'Parents',  Icon: Users     },
-  { id: 'settings',label: 'Settings', Icon: Settings  },
+  { id: 'home',       label: 'Home',       Icon: Home       },
+  { id: 'audit',      label: 'Audit',      Icon: ListTree   },
+  { id: 'parents',    label: 'Parents',    Icon: Users      },
+  { id: 'financials', label: 'Financials', Icon: TrendingUp },
+  { id: 'settings',   label: 'Settings',   Icon: Settings   },
 ];
 
 function getInitialExpanded(): boolean {

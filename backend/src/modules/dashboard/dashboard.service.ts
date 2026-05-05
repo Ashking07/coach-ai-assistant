@@ -396,6 +396,61 @@ export class DashboardService {
     };
   }
 
+  async getFinancials(coachId: string) {
+    const now = new Date();
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const dow = now.getDay();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+    weekStart.setHours(0, 0, 0, 0);
+
+    const [monthStats, weekStats, outstanding, recent] = await Promise.all([
+      this.prisma.session.aggregate({
+        where: { coachId, paid: true, paidAt: { gte: monthStart } },
+        _sum: { priceCents: true },
+        _count: true,
+      }),
+      this.prisma.session.aggregate({
+        where: { coachId, paid: true, paidAt: { gte: weekStart } },
+        _sum: { priceCents: true },
+        _count: true,
+      }),
+      this.prisma.session.aggregate({
+        where: {
+          coachId,
+          paid: false,
+          priceCents: { gt: 0 },
+          status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        },
+        _sum: { priceCents: true },
+        _count: true,
+      }),
+      this.prisma.session.findMany({
+        where: { coachId, paid: true },
+        orderBy: { paidAt: 'desc' },
+        take: 30,
+        include: { kid: { include: { parent: { select: { name: true } } } } },
+      }),
+    ]);
+
+    return {
+      thisMonth: { amountCents: monthStats._sum.priceCents ?? 0, count: monthStats._count },
+      thisWeek:  { amountCents: weekStats._sum.priceCents ?? 0,  count: weekStats._count  },
+      outstanding: { amountCents: outstanding._sum.priceCents ?? 0, count: outstanding._count },
+      recentPayments: recent.map((s) => ({
+        id: s.id,
+        kidName: s.kid.name,
+        parentName: s.kid.parent.name,
+        amountCents: s.priceCents,
+        method: s.paymentMethod,
+        paidAt: (s.paidAt ?? s.createdAt).toISOString(),
+        sessionAt: s.scheduledAt.toISOString(),
+      })),
+    };
+  }
+
   async pauseAgent(coachId: string): Promise<SettingsDto> {
     const coach = await this.prisma.coach.update({
       where: { id: coachId },

@@ -5,6 +5,7 @@ import { BottomTabBar } from './components/bottom-tab-bar';
 import { HomeScreen } from './components/screens/home';
 import { AuditScreen } from './components/screens/audit';
 import { ParentsScreen } from './components/screens/parents';
+import { FinancialsScreen } from './components/screens/financials';
 import { SettingsScreen } from './components/screens/settings';
 import { api } from './lib/api';
 import { darkVars, lightVars } from './tokens';
@@ -74,6 +75,7 @@ export default function App() {
           {tab === 'home' && <HomeScreen theme={theme} onToggleTheme={toggleTheme} />}
           {tab === 'audit' && <AuditScreen />}
           {tab === 'parents' && <ParentsScreen />}
+          {tab === 'financials' && <FinancialsScreen />}
           {tab === 'settings' && <SettingsScreen />}
         </div>
       </main>

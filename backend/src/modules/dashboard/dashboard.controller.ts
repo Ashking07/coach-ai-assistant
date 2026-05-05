@@ -271,6 +271,11 @@ export class DashboardController {
     return this.dashboardService.createSessionRecap(this.guard(token), id, parsed.transcript);
   }
 
+  @Get('financials')
+  getFinancials(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.dashboardService.getFinancials(this.guard(token));
+  }
+
   @Post('kill-switch')
   pauseAgent(@Headers('x-dashboard-token') token: string | undefined) {
     return this.dashboardService.pauseAgent(this.guard(token));

@@ -89,6 +89,23 @@ export interface SettingsResponse {
 
 export type PaymentMethod = 'CASH' | 'STRIPE' | 'VENMO' | 'ZELLE' | 'CHECK' | 'OTHER';
 
+export interface FinancialPayment {
+  id: string;
+  kidName: string;
+  parentName: string;
+  amountCents: number;
+  method: PaymentMethod | null;
+  paidAt: string;
+  sessionAt: string;
+}
+
+export interface FinancialsResponse {
+  thisMonth: { amountCents: number; count: number };
+  thisWeek:  { amountCents: number; count: number };
+  outstanding: { amountCents: number; count: number };
+  recentPayments: FinancialPayment[];
+}
+
 export interface WeekSession {
   id: string;
   kidName: string;
@@ -215,6 +232,7 @@ export const api = {
     apiFetch<SettingsResponse>('/api/dashboard/stripe/refresh', { method: 'POST' }),
   stripeLoginLink: () =>
     apiFetch<{ url: string }>('/api/dashboard/stripe/login-link', { method: 'POST' }),
+  financials: () => apiFetch<FinancialsResponse>('/api/dashboard/financials'),
   createSession: (input: { kidId: string; scheduledAt: string; durationMinutes: number }) =>
     apiFetch<{ id: string }>('/api/dashboard/sessions', {
       method: 'POST',

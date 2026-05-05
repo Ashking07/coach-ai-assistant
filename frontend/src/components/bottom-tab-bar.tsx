@@ -1,11 +1,12 @@
-import { Home, ScrollText, Users, Settings } from 'lucide-react';
+import { Home, ScrollText, Users, Settings, TrendingUp } from 'lucide-react';
 import type { Tab } from './side-nav';
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
-  { id: 'home', icon: <Home size={22} />, label: 'Home' },
-  { id: 'audit', icon: <ScrollText size={22} />, label: 'Audit' },
-  { id: 'parents', icon: <Users size={22} />, label: 'Parents' },
-  { id: 'settings', icon: <Settings size={22} />, label: 'Settings' },
+  { id: 'home',       icon: <Home size={22} />,       label: 'Home'   },
+  { id: 'audit',      icon: <ScrollText size={22} />, label: 'Audit'  },
+  { id: 'parents',    icon: <Users size={22} />,      label: 'Parents'},
+  { id: 'financials', icon: <TrendingUp size={22} />, label: 'Money'  },
+  { id: 'settings',   icon: <Settings size={22} />,   label: 'Settings'},
 ];
 
 export function BottomTabBar({
