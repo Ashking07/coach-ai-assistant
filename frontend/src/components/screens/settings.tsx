@@ -282,6 +282,7 @@ export function SettingsScreen() {
             )}
             <div className="flex items-center gap-3 mt-3 flex-wrap">
               <div
+                className="flex items-center gap-1.5"
                 style={{
                   fontFamily: 'Geist Mono, monospace',
                   fontSize: 11,
@@ -289,6 +290,18 @@ export function SettingsScreen() {
                   letterSpacing: '0.08em',
                 }}
               >
+                {data?.stripeOnboardingDone && (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background: T.moss,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
                 STRIPE · {data?.stripeOnboardingDone ? 'CONNECTED' : 'NOT CONNECTED'}
               </div>
               <button
