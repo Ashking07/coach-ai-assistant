@@ -196,50 +196,78 @@ export class StripeService {
       minute: '2-digit',
     }).format(session.scheduledAt);
 
-    const idempotencyKey = `session-${sessionId}`;
-
-    const checkout = await stripe.checkout.sessions.create(
-      {
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              unit_amount: session.priceCents,
-              product_data: {
-                name: `Session — ${session.kid.name} ${label}`,
-              },
-            },
-            quantity: 1,
-          },
-        ],
-        success_url: `${this.config.get('PUBLIC_BASE_URL') ?? 'http://localhost:3002'}/api/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${this.config.get('PUBLIC_BASE_URL') ?? 'http://localhost:3002'}/api/stripe/return?cancelled=1`,
-        metadata: { sessionId, coachId },
-        payment_intent_data: { metadata: { sessionId, coachId } },
-      },
-      { stripeAccount: coach.stripeAccountId, idempotencyKey },
-    );
-
-    await this.prisma.payment.create({
-      data: {
-        coachId,
-        sessionId,
-        amountCents: session.priceCents,
-        method: 'STRIPE',
-        status: 'PENDING',
-        stripeCheckoutId: checkout.id,
-        recordedBy: 'auto',
-      },
+    // Reuse any existing pending checkout for this session to avoid duplicate charges
+    const existingPayment = await this.prisma.payment.findFirst({
+      where: { sessionId, coachId, status: 'PENDING', stripeCheckoutId: { not: null } },
+      select: { stripeCheckoutId: true },
     });
 
-    if (!checkout.url) {
-      this.logger.error({ event: 'STRIPE_CHECKOUT_URL_MISSING', sessionId });
-      throw new InternalServerErrorException('Stripe checkout URL missing');
+    let checkoutId: string;
+    let checkoutUrl: string;
+
+    if (existingPayment?.stripeCheckoutId) {
+      // Retrieve the existing checkout session from Stripe
+      const existing = await stripe.checkout.sessions.retrieve(
+        existingPayment.stripeCheckoutId,
+        { stripeAccount: coach.stripeAccountId },
+      );
+      if (existing.url && existing.status === 'open') {
+        checkoutId = existing.id;
+        checkoutUrl = existing.url;
+      } else {
+        // Existing checkout is expired or completed — create a fresh one
+        existingPayment.stripeCheckoutId = null;
+      }
     }
 
-    return { url: checkout.url, checkoutId: checkout.id };
+    if (!existingPayment?.stripeCheckoutId) {
+      const checkout = await stripe.checkout.sessions.create(
+        {
+          mode: 'payment',
+          payment_method_types: ['card'],
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                unit_amount: session.priceCents,
+                product_data: {
+                  name: `Session — ${session.kid.name} ${label}`,
+                },
+              },
+              quantity: 1,
+            },
+          ],
+          success_url: `${this.config.get('PUBLIC_BASE_URL') ?? 'http://localhost:3002'}/api/stripe/return?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${this.config.get('PUBLIC_BASE_URL') ?? 'http://localhost:3002'}/api/stripe/return?cancelled=1`,
+          metadata: { sessionId, coachId },
+          payment_intent_data: { metadata: { sessionId, coachId } },
+        },
+        { stripeAccount: coach.stripeAccountId },
+      );
+
+      if (!checkout.url) {
+        this.logger.error({ event: 'STRIPE_CHECKOUT_URL_MISSING', sessionId });
+        throw new InternalServerErrorException('Stripe checkout URL missing');
+      }
+
+      checkoutId = checkout.id;
+      checkoutUrl = checkout.url;
+
+      await this.prisma.payment.create({
+        data: {
+          coachId,
+          sessionId,
+          amountCents: session.priceCents,
+          method: 'STRIPE',
+          status: 'PENDING',
+          stripeCheckoutId: checkoutId,
+          recordedBy: 'auto',
+        },
+      });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return { url: checkoutUrl!, checkoutId: checkoutId! };
   }
 
   async sendPaymentReceipt(checkoutSessionId: string): Promise<void> {
