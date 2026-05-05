@@ -48,7 +48,7 @@ export function FireCard({ fire, onOpen, onDismiss }: { fire: Fire; onOpen: () =
         <IntentBadge intent={fire.intent} />
       </span>
 
-      <p style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.5 }}>{fire.preview}</p>
+      <p style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{fire.preview}</p>
 
       <div className="flex gap-2 mt-1">
         <button

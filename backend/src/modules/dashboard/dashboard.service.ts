@@ -251,7 +251,7 @@ export class DashboardService {
       kid: firstKid(d.message.parent.kids),
       reason: d.actionTaken,
       ago: toAgo(d.createdAt),
-      preview: d.message.content.length > 160 ? d.message.content.slice(0, 160) + '…' : d.message.content,
+      preview: d.message.content,
       intent: d.intent,
     }));
 
