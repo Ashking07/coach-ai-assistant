@@ -571,7 +571,7 @@ function DayDetailSheet({
             if (block?.kind === 'booked') {
               bg = slotIsPast ? stone + '10' : T.sunrise + '18';
               leftBorderColor = slotIsPast ? stone : T.sunrise;
-              const showPayLink = !block.paid && stripeConnected && (block.priceCents ?? 0) > 0 && block.sessionId;
+              const showPayLink = !block.paid && (block.priceCents ?? 0) > 0 && block.sessionId;
               content = (
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center">
@@ -582,16 +582,19 @@ function DayDetailSheet({
                   </div>
                   {showPayLink && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onSendPaymentLink?.(block.sessionId!); }}
+                      onClick={(e) => { e.stopPropagation(); stripeConnected && onSendPaymentLink?.(block.sessionId!); }}
+                      disabled={!stripeConnected}
                       className="px-2 py-0.5 rounded-lg"
                       style={{
-                        background: T.sunrise + '22',
-                        border: `1px solid ${T.sunrise}55`,
-                        color: T.sunrise,
+                        background: stripeConnected ? T.sunrise + '22' : 'var(--hairline)',
+                        border: `1px solid ${stripeConnected ? T.sunrise + '55' : 'var(--hairline)'}`,
+                        color: stripeConnected ? T.sunrise : 'var(--muted)',
                         fontSize: 11,
-                        cursor: 'pointer',
+                        cursor: stripeConnected ? 'pointer' : 'default',
                         flexShrink: 0,
+                        opacity: stripeConnected ? 1 : 0.55,
                       }}
+                      title={!stripeConnected ? 'Connect Stripe in Settings first' : 'Send Stripe payment link'}
                     >
                       Send link
                     </button>

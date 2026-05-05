@@ -268,19 +268,20 @@ export function SessionCard({
             Open <ChevronRight size={14} />
           </div>
           <div className="flex items-center gap-1">
-            {!session.paid && stripeConnected && session.priceCents > 0 && (
+            {!session.paid && session.priceCents > 0 && (
               <button
-                onClick={() => sendPaymentLinkMutation.mutate()}
-                disabled={sendPaymentLinkMutation.isPending || paymentLinkSent}
+                onClick={() => stripeConnected && sendPaymentLinkMutation.mutate()}
+                disabled={!stripeConnected || sendPaymentLinkMutation.isPending || paymentLinkSent}
                 className="px-2 py-1 rounded-lg transition-colors"
                 style={{
-                  background: T.sunrise + '18',
-                  color: paymentLinkSent ? T.moss : T.sunrise,
-                  border: `1px solid ${paymentLinkSent ? T.moss : T.sunrise}55`,
+                  background: !stripeConnected ? 'var(--hairline)' : T.sunrise + '18',
+                  color: !stripeConnected ? 'var(--muted)' : paymentLinkSent ? T.moss : T.sunrise,
+                  border: `1px solid ${!stripeConnected ? 'var(--hairline)' : paymentLinkSent ? T.moss + '55' : T.sunrise + '55'}`,
                   fontSize: 11,
-                  cursor: 'pointer',
+                  cursor: stripeConnected ? 'pointer' : 'default',
+                  opacity: !stripeConnected ? 0.55 : 1,
                 }}
-                title="Send Stripe payment link"
+                title={!stripeConnected ? 'Connect Stripe in Settings first' : 'Send Stripe payment link'}
               >
                 {paymentLinkSent ? 'Link sent ✓' : sendPaymentLinkMutation.isPending ? 'Sending…' : 'Send link'}
               </button>
