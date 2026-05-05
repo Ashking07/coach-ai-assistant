@@ -209,6 +209,7 @@ export class StripeService {
       // Retrieve the existing checkout session from Stripe
       const existing = await stripe.checkout.sessions.retrieve(
         existingPayment.stripeCheckoutId,
+        undefined,
         { stripeAccount: coach.stripeAccountId },
       );
       if (existing.url && existing.status === 'open') {
