@@ -64,11 +64,23 @@ export class StripeService {
         country: 'US',
         metadata: { coachId },
         business_profile: { name: coach.name },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
       });
       accountId = account.id;
       await this.prisma.coach.update({
         where: { id: coachId },
         data: { stripeAccountId: accountId },
+      });
+    } else {
+      // Ensure capabilities are requested on existing accounts (idempotent)
+      await stripe.accounts.update(accountId, {
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
       });
     }
 
