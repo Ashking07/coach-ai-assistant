@@ -1,14 +1,17 @@
 import {
   BadRequestException,
   Controller,
+  Get,
   Headers,
   Post,
+  Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../../prisma.service';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 type StripeRequest = Request & { body: Buffer };
 
@@ -27,6 +30,46 @@ export class StripeWebhookController {
     this.connectSecret = this.config.get<string>(
       'STRIPE_CONNECT_WEBHOOK_SECRET',
     );
+  }
+
+  @Get('return')
+  async handleReturn(
+    @Query('session_id') checkoutSessionId: string | undefined,
+    @Query('cancelled') cancelled: string | undefined,
+    @Res() res: Response,
+  ) {
+    const frontendBase =
+      this.config.get<string>('FRONTEND_URL') ??
+      'https://coach-ai-assistant-frontend.vercel.app';
+
+    if (cancelled) {
+      return res.redirect(`${frontendBase}?payment=cancelled`);
+    }
+
+    if (checkoutSessionId) {
+      try {
+        const payment = await this.prisma.payment.findFirst({
+          where: { stripeCheckoutId: checkoutSessionId },
+          select: { id: true, sessionId: true, status: true },
+        });
+        if (payment && payment.status !== 'PAID') {
+          await this.prisma.$transaction([
+            this.prisma.payment.updateMany({
+              where: { stripeCheckoutId: checkoutSessionId },
+              data: { status: 'PAID', paidAt: new Date(), recordedBy: 'return-url' },
+            }),
+            this.prisma.session.update({
+              where: { id: payment.sessionId },
+              data: { paid: true, paymentMethod: 'STRIPE', paidAt: new Date() },
+            }),
+          ]);
+        }
+      } catch {
+        // webhook handles the authoritative mark-paid; don't fail the redirect
+      }
+    }
+
+    return res.redirect(`${frontendBase}?payment=success`);
   }
 
   @Post('webhook')
