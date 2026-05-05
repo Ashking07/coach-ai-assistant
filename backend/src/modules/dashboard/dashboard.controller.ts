@@ -74,6 +74,11 @@ export class DashboardController {
     return this.stripeService.getAccountDebug(this.guard(token));
   }
 
+  @Post('stripe/login-link')
+  async stripeLoginLink(@Headers('x-dashboard-token') token: string | undefined) {
+    return this.stripeService.createExpressLoginLink(this.guard(token));
+  }
+
   @Patch('settings')
   updateSettings(
     @Headers('x-dashboard-token') token: string | undefined,

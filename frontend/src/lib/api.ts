@@ -212,6 +212,8 @@ export const api = {
     apiFetch<{ url: string }>('/api/dashboard/stripe/onboard', { method: 'POST' }),
   refreshStripe: () =>
     apiFetch<SettingsResponse>('/api/dashboard/stripe/refresh', { method: 'POST' }),
+  stripeLoginLink: () =>
+    apiFetch<{ url: string }>('/api/dashboard/stripe/login-link', { method: 'POST' }),
   createSession: (input: { kidId: string; scheduledAt: string; durationMinutes: number }) =>
     apiFetch<{ id: string }>('/api/dashboard/sessions', {
       method: 'POST',

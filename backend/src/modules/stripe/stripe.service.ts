@@ -152,6 +152,17 @@ export class StripeService {
     };
   }
 
+  async createExpressLoginLink(coachId: string): Promise<{ url: string }> {
+    const stripe = this.requireStripe();
+    const coach = await this.prisma.coach.findUnique({
+      where: { id: coachId },
+      select: { stripeAccountId: true },
+    });
+    if (!coach?.stripeAccountId) throw new BadRequestException('No Stripe account connected');
+    const link = await stripe.accounts.createLoginLink(coach.stripeAccountId);
+    return { url: link.url };
+  }
+
   async createCheckoutForSession(
     sessionId: string,
     coachId: string,

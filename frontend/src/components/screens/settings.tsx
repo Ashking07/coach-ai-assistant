@@ -73,6 +73,11 @@ export function SettingsScreen() {
     },
   });
 
+  const stripeLoginLinkMutation = useMutation({
+    mutationFn: api.stripeLoginLink,
+    onSuccess: ({ url }) => { window.open(url, '_blank'); },
+  });
+
   // Auto-sync Stripe status when returning from Connect onboarding
   const stripeRefreshRan = useRef(false);
   useEffect(() => {
@@ -286,23 +291,21 @@ export function SettingsScreen() {
                 style={{
                   fontFamily: 'Geist Mono, monospace',
                   fontSize: 11,
-                  color: data?.stripeOnboardingDone ? T.moss : 'var(--muted)',
+                  color: data?.stripeChargesEnabled ? T.moss : data?.stripeOnboardingDone ? T.sunrise : 'var(--muted)',
                   letterSpacing: '0.08em',
                 }}
               >
-                {data?.stripeOnboardingDone && (
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      width: 7,
-                      height: 7,
-                      borderRadius: '50%',
-                      background: T.moss,
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
-                STRIPE · {data?.stripeOnboardingDone ? 'CONNECTED' : 'NOT CONNECTED'}
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: data?.stripeChargesEnabled ? T.moss : data?.stripeOnboardingDone ? T.sunrise : 'var(--muted)',
+                    flexShrink: 0,
+                  }}
+                />
+                STRIPE · {data?.stripeChargesEnabled ? 'ACTIVE' : data?.stripeOnboardingDone ? 'PENDING ACTIVATION' : 'NOT CONNECTED'}
               </div>
               <button
                 onClick={async () => {
@@ -324,6 +327,22 @@ export function SettingsScreen() {
               >
                 {data?.stripeOnboardingDone ? 'Reconnect Stripe' : 'Connect Stripe'}
               </button>
+              {data?.stripeOnboardingDone && (
+                <button
+                  onClick={() => stripeLoginLinkMutation.mutate()}
+                  disabled={stripeLoginLinkMutation.isPending}
+                  className="px-3 py-1.5 rounded-xl"
+                  style={{
+                    background: T.sunrise + '18',
+                    border: `1px solid ${T.sunrise}55`,
+                    color: T.sunrise,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {stripeLoginLinkMutation.isPending ? 'Opening…' : 'Manage account'}
+                </button>
+              )}
               <button
                 onClick={() => stripeRefreshMutation.mutate()}
                 disabled={stripeRefreshMutation.isPending}
