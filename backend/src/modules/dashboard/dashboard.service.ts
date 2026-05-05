@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { ApprovalStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -1052,7 +1052,11 @@ export class DashboardService {
         receivedAt: new Date(),
       },
     });
-    await sender.send({ coachId, messageId: outboundId, parentId: session.kid.parentId, content: body });
+    const result = await sender.send({ coachId, messageId: outboundId, parentId: session.kid.parentId, content: body });
+    if (!result.ok) {
+      this.logger.error({ event: 'PAYMENT_LINK_SEND_FAILED', coachId, sessionId, error: result.error });
+      throw new InternalServerErrorException(`Message delivery failed: ${result.error}`);
+    }
     this.logger.log({ event: 'PAYMENT_LINK_SENT', coachId, sessionId });
     return { ok: true };
   }
