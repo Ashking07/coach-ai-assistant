@@ -151,7 +151,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText} — ${path}`);
   }
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // ─── API calls ────────────────────────────────────────────────────────────────
