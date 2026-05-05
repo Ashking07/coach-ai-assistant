@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type SettingsResponse, type KidOption } from '../../lib/api';
 import { T } from '../../tokens';
 
@@ -65,6 +65,25 @@ export function SettingsScreen() {
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
   });
+
+  const stripeRefreshMutation = useMutation({
+    mutationFn: api.refreshStripe,
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['settings'], updated);
+    },
+  });
+
+  // Auto-sync Stripe status when returning from Connect onboarding
+  const stripeRefreshRan = useRef(false);
+  useEffect(() => {
+    if (stripeRefreshRan.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('stripe_return') === '1') {
+      stripeRefreshRan.current = true;
+      stripeRefreshMutation.mutate();
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const autonomy = data?.autonomyEnabled ?? true;
 
@@ -291,6 +310,20 @@ export function SettingsScreen() {
                 }}
               >
                 {data?.stripeOnboardingDone ? 'Reconnect Stripe' : 'Connect Stripe'}
+              </button>
+              <button
+                onClick={() => stripeRefreshMutation.mutate()}
+                disabled={stripeRefreshMutation.isPending}
+                className="px-3 py-1.5 rounded-xl"
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--hairline)',
+                  color: 'var(--muted)',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                {stripeRefreshMutation.isPending ? 'Syncing…' : 'Sync status'}
               </button>
             </div>
           </div>

@@ -31,7 +31,7 @@ export class StripeService {
       `${backendBase}/api/dashboard/stripe/onboard/return`;
     this.returnUrl =
       this.config.get<string>('STRIPE_CONNECT_RETURN_URL') ??
-      `${frontendBase}/settings`;
+      `${frontendBase}/settings?stripe_return=1`;
     if (secretKey) {
       this.stripe = this.createStripe(secretKey);
     }
