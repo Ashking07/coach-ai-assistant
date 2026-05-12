@@ -91,7 +91,7 @@ export async function traceRun<T>(
   });
   const ctx = createRunContext(emitter, runId);
   try {
-    const result = await fn(ctx);
+    const result = await emitter.withRunContext(runId, opts.runbook, () => fn(ctx));
     emitter.runEnd({
       runId,
       status: 'ok',

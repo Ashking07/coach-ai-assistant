@@ -39,5 +39,7 @@ export interface ObsEmitterPort {
   runEnd(params: ObsRunEndParams): void;
   stepStart(params: ObsStepStartParams): void;
   stepEnd(params: ObsStepEndParams): void;
+  step<T>(name: string, tool: string, fn: () => Promise<T>, input?: Record<string, unknown>): Promise<T>;
+  withRunContext<T>(runId: string, runbook: string, fn: () => Promise<T>): Promise<T>;
   flush(): Promise<void>;
 }

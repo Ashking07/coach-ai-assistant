@@ -24,8 +24,16 @@ export async function createObsEmitter(
   const apiKey = config.getOrThrow<string>('OBS_API_KEY');
   const projectId = config.getOrThrow<string>('OBS_PROJECT_ID');
 
-  const { ObsEmitter } = await import('@veriops/sdk-js');
-  const emitter = new ObsEmitter({ baseUrl, apiKey, projectId });
+  const { ObsEmitter, als } = await import('@veriops/sdk-js');
+  const emitter = new ObsEmitter({
+    baseUrl,
+    apiKey,
+    projectId,
+    modelPricing: {
+      'claude-haiku-4-5-20251001': { input_per_1k: 0.0008, output_per_1k: 0.004 },
+      'claude-sonnet-4-6': { input_per_1k: 0.003, output_per_1k: 0.015 },
+    },
+  });
   logger.log({ event: 'OBS_INITIALIZED', baseUrl, projectId });
 
   // The SDK's underlying methods may throw if the network is unreachable.
@@ -54,6 +62,13 @@ export async function createObsEmitter(
             costUsd: p.costUsd,
           }),
         'stepEnd',
+      ),
+    step: <T>(name: string, tool: string, fn: () => Promise<T>, input?: Record<string, unknown>): Promise<T> =>
+      emitter.step(name, tool, fn, input ?? {}),
+    withRunContext: <T>(runId: string, runbook: string, fn: () => Promise<T>): Promise<T> =>
+      (als as { run: (store: unknown, fn: () => Promise<T>) => Promise<T> }).run(
+        { runId, stepIndex: 0, runbook },
+        fn,
       ),
     flush: async () => {
       try {

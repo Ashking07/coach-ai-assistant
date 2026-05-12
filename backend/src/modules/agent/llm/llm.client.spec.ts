@@ -41,7 +41,6 @@ describe('AnthropicLlmClient.classify', () => {
       expect.objectContaining({
         model: 'claude-haiku-4-5-20251001',
         system: 'Classify intent',
-        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'user',
@@ -89,15 +88,19 @@ describe('AnthropicLlmClient.classify', () => {
   });
 
   describe('classify with runCtx', () => {
-    it('emits stepStart and stepEnd on the emitter', async () => {
-      const calls: { kind: string; payload: any }[] = [];
+    it('delegates to obs.step and accumulates tokens in runCtx', async () => {
+      const stepCalls: { name: string; tool: string }[] = [];
       const recording = {
         newRunId: () => 'run_x',
         newStepId: () => 'step_x',
-        runStart: (p: any) => calls.push({ kind: 'runStart', payload: p }),
-        runEnd: (p: any) => calls.push({ kind: 'runEnd', payload: p }),
-        stepStart: (p: any) => calls.push({ kind: 'stepStart', payload: p }),
-        stepEnd: (p: any) => calls.push({ kind: 'stepEnd', payload: p }),
+        runStart: () => {},
+        runEnd: () => {},
+        stepStart: () => {},
+        stepEnd: () => {},
+        step: async <T>(name: string, tool: string, fn: () => Promise<T>) => {
+          stepCalls.push({ name, tool });
+          return fn();
+        },
         flush: async () => {},
       };
       const fakeAnthropic = {
@@ -128,9 +131,9 @@ describe('AnthropicLlmClient.classify', () => {
         systemPrompt: 'sys',
         runCtx: ctx as any,
       });
-      expect(calls.map((c) => c.kind)).toEqual(['stepStart', 'stepEnd']);
-      expect(calls[1].payload.status).toBe('ok');
-      expect(calls[1].payload.output.tokensIn).toBe(11);
+      expect(stepCalls).toEqual([
+        { name: 'llm.classify', tool: 'anthropic.claude-haiku-4-5-20251001' },
+      ]);
       expect(ctx.totalTokens).toBe(18);
     });
   });

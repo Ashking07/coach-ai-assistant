@@ -81,40 +81,23 @@ export class AnthropicLlmClient implements LlmClient {
     const model = opts.model ?? CLASSIFICATION_MODEL;
     const ctx = opts.runCtx;
 
-    let stepId: string | undefined;
-    if (ctx) {
-      stepId = this.obs.newStepId();
-      this.obs.stepStart({
-        runId: ctx.runId,
-        stepId,
-        index: ctx.stepIndex++,
-        name: 'llm.classify',
-        tool: `anthropic.${model}`,
-        input: { promptChars: (opts.userPrompt ?? input).length, model },
-      });
-    }
+    const llmParams = {
+      model,
+      max_tokens: opts.maxTokens ?? 220,
+      temperature: opts.temperature ?? 0,
+      system: opts.systemPrompt,
+      messages: [{ role: 'user', content: opts.userPrompt ?? input }],
+    };
+    const callLlm = () => this.anthropic.messages.create(llmParams);
 
-    let response: AnthropicMessageResponse;
-    try {
-      response = await this.anthropic.messages.create({
-        model,
-        max_tokens: opts.maxTokens ?? 220,
-        temperature: opts.temperature ?? 0,
-        system: opts.systemPrompt,
-        messages: [{ role: 'user', content: opts.userPrompt ?? input }],
-      });
-    } catch (err) {
-      if (ctx && stepId) {
-        this.obs.stepEnd({
-          runId: ctx.runId,
-          stepId,
-          status: 'error',
-          output: { error: err instanceof Error ? err.message : 'unknown' },
-          latencyMs: Date.now() - startedAt,
-        });
-      }
-      throw err;
-    }
+    const response = ctx
+      ? await this.obs.step('llm.classify', `anthropic.${model}`, callLlm, {
+          model,
+          promptChars: (opts.userPrompt ?? input).length,
+          maxTokens: llmParams.max_tokens,
+          temperature: llmParams.temperature,
+        })
+      : await callLlm();
 
     const latencyMs = Date.now() - startedAt;
     const firstText = response.content?.find(
@@ -123,15 +106,6 @@ export class AnthropicLlmClient implements LlmClient {
     );
 
     if (!firstText || firstText.type !== 'text' || !firstText.text) {
-      if (ctx && stepId) {
-        this.obs.stepEnd({
-          runId: ctx.runId,
-          stepId,
-          status: 'error',
-          output: { error: 'no text content' },
-          latencyMs,
-        });
-      }
       throw new LlmOutputError('LLM output did not contain text content');
     }
 
@@ -150,29 +124,11 @@ export class AnthropicLlmClient implements LlmClient {
     try {
       parsedJson = JSON.parse(jsonText);
     } catch (error) {
-      if (ctx && stepId) {
-        this.obs.stepEnd({
-          runId: ctx.runId,
-          stepId,
-          status: 'error',
-          output: { error: 'invalid JSON' },
-          latencyMs,
-        });
-      }
       throw new LlmOutputError('LLM output was not valid JSON', error, stripped);
     }
 
     const parsed = opts.schema.safeParse(parsedJson);
     if (!parsed.success) {
-      if (ctx && stepId) {
-        this.obs.stepEnd({
-          runId: ctx.runId,
-          stepId,
-          status: 'error',
-          output: { error: 'schema validation failed' },
-          latencyMs,
-        });
-      }
       throw new LlmOutputError(
         `LLM output failed schema validation: ${z.prettifyError(parsed.error)}`,
         parsed.error,
@@ -186,19 +142,6 @@ export class AnthropicLlmClient implements LlmClient {
 
     if (ctx) {
       ctx.addTokens(usage.tokensIn, usage.tokensOut);
-      if (stepId) {
-        this.obs.stepEnd({
-          runId: ctx.runId,
-          stepId,
-          status: 'ok',
-          output: {
-            model: response.model ?? model,
-            tokensIn: usage.tokensIn,
-            tokensOut: usage.tokensOut,
-          },
-          latencyMs,
-        });
-      }
     }
 
     return {

@@ -33,7 +33,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
-    "@veriops/sdk-js": "^0.1.8",
+    "@veriops/sdk-js": "^0.2.0",
     "body-parser": "^2.2.2",
     "bullmq": "^5.75.2",
     "dotenv": "^17.4.2",

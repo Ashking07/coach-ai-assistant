@@ -41,8 +41,8 @@ importers:
         specifier: ^7.7.0
         version: 7.7.0(prisma@7.7.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3))(typescript@5.9.3)
       '@veriops/sdk-js':
-        specifier: ^0.1.8
-        version: 0.1.8
+        specifier: ^0.2.0
+        version: 0.2.0
       body-parser:
         specifier: ^2.2.2
         version: 2.2.2
@@ -1663,8 +1663,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@veriops/sdk-js@0.1.8':
-    resolution: {integrity: sha512-rr/8Rqp4RiDUNKl8ZfpZDBN2zC5/wHG19n5d2gy6KtF+lSyMYIOCNnLwvl+k5kBWkn3JK8FlpJtI7K8a6In9fg==}
+  '@veriops/sdk-js@0.2.0':
+    resolution: {integrity: sha512-9/OzYtOUQVXgMpSz4hCcOcl6m8eStJSp3LyXIiBhFcr+LiBZKxJsXe57PnXDq1uLi0v4Z7Bty7gR+D0mX1WNOQ==}
     engines: {node: '>=18'}
 
   '@vitejs/plugin-react@6.0.1':
@@ -5962,7 +5962,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.11.1':
     optional: true
 
-  '@veriops/sdk-js@0.1.8': {}
+  '@veriops/sdk-js@0.2.0': {}
 
   '@vitejs/plugin-react@6.0.1(vite@8.0.9(@types/node@24.12.2)(jiti@2.6.1)(terser@5.46.1))':
     dependencies:
